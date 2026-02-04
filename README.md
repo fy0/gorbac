@@ -1,9 +1,9 @@
 goRBAC 
 ======
 
-[![Build Status](https://travis-ci.org/mikespook/gorbac.png?branch=master)](https://travis-ci.org/mikespook/gorbac)
-[![GoDoc](https://godoc.org/github.com/mikespook/gorbac?status.png)](https://godoc.org/github.com/mikespook/gorbac)
-[![Coverage Status](https://coveralls.io/repos/github/mikespook/gorbac/badge.svg?branch=master)](https://coveralls.io/github/mikespook/gorbac?branch=master)
+[![Build Status](https://travis-ci.org/fy0/gorbac.png?branch=master)](https://travis-ci.org/fy0/gorbac)
+[![Go Reference](https://pkg.go.dev/badge/github.com/fy0/gorbac/v3.svg)](https://pkg.go.dev/github.com/fy0/gorbac/v3)
+[![Coverage Status](https://coveralls.io/repos/github/fy0/gorbac/badge.svg?branch=master)](https://coveralls.io/github/fy0/gorbac?branch=master)
 
 goRBAC provides a lightweight role-based access control implementation
 in Golang.
@@ -31,7 +31,7 @@ Install
 Install the package:
 
 ```bash
-$ go get github.com/mikespook/gorbac/v3
+$ go get github.com/fy0/gorbac/v3
 ```
 
 Usage
@@ -49,7 +49,7 @@ Preparing
 Import the library:
 
 ```go
-import "github.com/mikespook/gorbac/v3"
+import "github.com/fy0/gorbac/v3"
 ```
 
 Get a new instance of RBAC (using string as the ID type):
@@ -143,7 +143,7 @@ Conditional Filters (Data Scope)
 
 This repo also includes an optional CEL -> SQL filter engine for row-level data scoping:
 
-- `github.com/mikespook/gorbac/v3/filter`: a CEL -> SQL filter engine (ported from `memos`).
+- `github.com/fy0/gorbac/v3/filter`: a CEL -> SQL filter engine (ported from `memos`).
 - Helpers in package `gorbac` to attach per-permission CEL filters (`FilterPermission`) and combine them across roles (`NewFilterProgram`).
 
 At a high level, permissions still decide whether a role is granted, and the attached
@@ -162,8 +162,8 @@ Example (union scope for roles that can `read`):
 ```go
 import (
 	"github.com/google/cel-go/cel"
-	"github.com/mikespook/gorbac/v3"
-	"github.com/mikespook/gorbac/v3/filter"
+	"github.com/fy0/gorbac/v3"
+	"github.com/fy0/gorbac/v3/filter"
 )
 
 schema := filter.Schema{
@@ -297,3 +297,4 @@ Open Source - MIT Software License
 ==================================
 
 See LICENSE.
+

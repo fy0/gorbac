@@ -951,32 +951,6 @@ func (r *renderer) renderEndsWithCondition(cond *EndsWithCondition) (renderResul
 	}
 }
 
-func combineAnd(left, right renderResult) renderResult {
-	if left.unsatisfiable || right.unsatisfiable {
-		return renderResult{sql: "1 = 0", unsatisfiable: true}
-	}
-	if left.trivial {
-		return right
-	}
-	if right.trivial {
-		return left
-	}
-	return renderResult{sql: fmt.Sprintf("(%s AND %s)", left.sql, right.sql)}
-}
-
-func combineOr(left, right renderResult) renderResult {
-	if left.trivial || right.trivial {
-		return renderResult{trivial: true}
-	}
-	if left.unsatisfiable {
-		return right
-	}
-	if right.unsatisfiable {
-		return left
-	}
-	return renderResult{sql: fmt.Sprintf("(%s OR %s)", left.sql, right.sql)}
-}
-
 func (r *renderer) addArg(value any) string {
 	r.placeholderCounter++
 	r.args = append(r.args, value)

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/fy0/gorbac/v3/filter"
 	"github.com/google/cel-go/cel"
-	"github.com/mikespook/gorbac/v3/filter"
 )
 
 func TestSQLPredicateCondition_AllDialects(t *testing.T) {

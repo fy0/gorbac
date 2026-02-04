@@ -6,9 +6,9 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/fy0/gorbac/v3"
+	"github.com/fy0/gorbac/v3/filter"
 	"github.com/google/cel-go/cel"
-	"github.com/mikespook/gorbac/v3"
-	"github.com/mikespook/gorbac/v3/filter"
 )
 
 // This example shows a "native expr style" workflow:

@@ -3,7 +3,7 @@ package filter_test
 import (
 	"testing"
 
-	"github.com/mikespook/gorbac/v3/filter"
+	"github.com/fy0/gorbac/v3/filter"
 )
 
 func TestSchemaFromStruct_ScalarFields(t *testing.T) {

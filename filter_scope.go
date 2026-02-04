@@ -3,7 +3,7 @@ package gorbac
 import (
 	"fmt"
 
-	"github.com/mikespook/gorbac/v3/filter"
+	"github.com/fy0/gorbac/v3/filter"
 )
 
 // filterRolesByPermissions returns roles that satisfy all required permissions.

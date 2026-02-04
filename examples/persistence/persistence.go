@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/mikespook/gorbac/v3"
+	"github.com/fy0/gorbac/v3"
 )
 
 func init() {

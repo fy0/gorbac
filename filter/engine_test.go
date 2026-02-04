@@ -3,11 +3,11 @@ package filter_test
 import (
 	"testing"
 
+	"github.com/fy0/gorbac/v3/filter"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/operators"
-	"github.com/mikespook/gorbac/v3/filter"
 )
 
 func testSchema() filter.Schema {

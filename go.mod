@@ -1,4 +1,4 @@
-module github.com/mikespook/gorbac/v3
+module github.com/fy0/gorbac/v3
 
 go 1.24.0
 
