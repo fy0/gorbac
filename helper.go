@@ -42,7 +42,7 @@ func InherCircle[T comparable](rbac *RBAC[T]) (err error) {
 }
 
 var (
-	ErrFoundCircle = fmt.Errorf("Found circle")
+	ErrFoundCircle = fmt.Errorf("found circle")
 )
 
 // https://en.wikipedia.org/wiki/Depth-first_search
@@ -58,7 +58,6 @@ func dfs[T comparable](rbac *RBAC[T], id T, skipped map[T]struct{},
 	}
 	parents := rbac.parents[id]
 	if len(parents) == 0 {
-		stack = nil
 		skipped[id] = empty
 		return nil
 	}

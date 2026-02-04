@@ -93,25 +93,53 @@ func TestWalk(t *testing.T) {
 
 func BenchmarkInherCircle(b *testing.B) {
 	rbac = New[string]()
-	rbac.Add(rA)
-	rbac.Add(rB)
-	rbac.Add(rC)
-	rbac.SetParent("role-a", "role-b")
-	rbac.SetParent("role-b", "role-c")
-	rbac.SetParent("role-c", "role-a")
+	if err := rbac.Add(rA); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rB); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rC); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.SetParent("role-a", "role-b"); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.SetParent("role-b", "role-c"); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.SetParent("role-c", "role-a"); err != nil {
+		b.Fatal(err)
+	}
+	if err := InherCircle(rbac); err == nil {
+		b.Fatal("expected circle inheritance error")
+	}
 	for i := 0; i < b.N; i++ {
-		InherCircle(rbac)
+		_ = InherCircle(rbac)
 	}
 }
 
 func BenchmarkInherNormal(b *testing.B) {
 	rbac = New[string]()
-	rbac.Add(rA)
-	rbac.Add(rB)
-	rbac.Add(rC)
-	rbac.SetParent("role-a", "role-b")
-	rbac.SetParent("role-b", "role-c")
+	if err := rbac.Add(rA); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rB); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rC); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.SetParent("role-a", "role-b"); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.SetParent("role-b", "role-c"); err != nil {
+		b.Fatal(err)
+	}
+	if err := InherCircle(rbac); err != nil {
+		b.Fatal(err)
+	}
 	for i := 0; i < b.N; i++ {
-		InherCircle(rbac)
+		_ = InherCircle(rbac)
 	}
 }

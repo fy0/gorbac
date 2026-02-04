@@ -19,7 +19,7 @@ goRBAC is a lightweight role-based access control implementation in Golang. It p
 - Role inheritance with circular dependency detection
 - Thread-safe operations
 - JSON serialization support
-- Extensible interfaces for custom implementations
+- Embeddable role structs + permission interfaces for customization
 - Built-in utility functions for common operations
 
 ## Package Structure
@@ -27,16 +27,20 @@ goRBAC is a lightweight role-based access control implementation in Golang. It p
 ```
 gorbac/
 ├── rbac.go              # Main RBAC implementation
-├── role.go              # Role interface and standard implementation
-├── permission.go        # Permission interface and standard implementation
+├── role.go              # Role struct and helpers
+├── permission.go        # Permission interface + StdPermission
+├── filter_permission.go # Permission with attached CEL data-scope filter
+├── filter_scope.go      # Helpers to build role-based SQL filters
 ├── helper.go            # Utility functions
 ├── helper_test.go       # Tests for helper functions
 ├── rbac_test.go         # Tests for RBAC implementation
 ├── role_test.go         # Tests for role implementation
 ├── permission_test.go   # Tests for permission implementation
 ├── example_test.go      # Usage examples
+├── filter/              # CEL -> IR -> SQL filter engine (ported from memos)
 ├── examples/            # Complete example applications
 │   ├── persistence/     # Example showing data persistence
+│   ├── test-project/    # Data-scope examples (scope + raw expr)
 │   └── user-defined/    # Example with custom role implementation
 ├── README.md            # Project documentation
 └── go.mod               # Go module definition
@@ -70,8 +74,8 @@ The `Role[T]` struct is the default implementation:
 
 ```go
 type Role[T comparable] struct {
-    sync.RWMutex
-    ID          T `json:"id"`
+    mutex *sync.RWMutex
+    ID    T `json:"id"`
     permissions Permissions[T]
 }
 ```
@@ -191,6 +195,86 @@ if rbac.IsGranted("role-a", pA, assertFunc) {
 }
 ```
 
+## Conditional Filters (Data Scope)
+
+In addition to “permission granted” checks, this repo includes a CEL-based data-scope filter system:
+
+- `FilterPermission[T]` (`filter_permission.go`): a permission with an attached CEL expression (string) used for row-level filtering.
+- `filter` package (`filter/`): compiles CEL boolean expressions into a dialect-agnostic condition tree, which can be rendered as SQL (SQLite/MySQL/Postgres) or evaluated in-memory.
+- `filter_scope.go`: glue helpers to build a single SQL fragment across all user roles (OR across roles, AND across required permissions).
+
+### Concepts
+
+1. **Schema (`filter.Schema`)**: maps CEL identifiers to SQL columns / JSON fields, including supported operators.
+2. **Engine (`filter.NewEngine`)**: parses + type-checks CEL with `cel-go`, then converts CEL AST to a small intermediate representation (IR).
+3. **Program**: holds the compiled IR (`ConditionTree()`), supports:
+   - `RenderSQL(bindings, opts)` -> `(Statement, error)`
+   - `IsGranted(vars, opts)` -> `(bool, error)` (in-memory counterpart)
+
+### SQL Output: placeholders + args
+
+SQL is always emitted as **SQL fragment + args**. For Postgres the renderer produces `$1/$2/...` placeholders.
+
+When composing multiple fragments, use `filter.RenderOptions.PlaceholderOffset` to continue numbering:
+
+```go
+stmt1 := ...
+stmt2, _ := engine.CompileToStatement(expr2, bindings, filter.RenderOptions{
+    Dialect: filter.DialectPostgres,
+    PlaceholderOffset: len(stmt1.Args),
+})
+finalSQL  := "(" + stmt1.SQL + ") AND (" + stmt2.SQL + ")"
+finalArgs := append(stmt1.Args, stmt2.Args...)
+```
+
+### Extension hooks
+
+The filter engine is designed to be extended without forking:
+
+- **CEL macros / env options**: `filter.WithEnvOptions(...)`, `filter.WithMacros(...)`
+- **Post-compile rewrite**: `filter.WithCompileHook(...)` can replace the compiled IR tree before SQL rendering / evaluation.
+- **Custom SQL predicates (subquery injection)**: `filter.WithSQLPredicate(...)` + `sql("name", [...])` in CEL
+
+#### Custom SQL predicates (`sql("name", [...])`)
+
+Use this when you need to inject correlated subqueries (e.g. membership checks):
+
+```go
+engine, _ := filter.NewEngine(schema,
+    filter.WithSQLPredicate("project_member", filter.SQLPredicate{
+        SQL: filter.DialectSQL{
+            Postgres: `EXISTS (
+                SELECT 1 FROM project_member pm
+                WHERE pm.project_id = {{project_id}}
+                  AND pm.user_id = ?::bigint
+                  AND pm.status = 'ACTIVE'
+            )`,
+        },
+    }),
+)
+
+stmt, _ := engine.CompileToStatement(
+    `creator_id == current_user_id || sql("project_member", [current_user_id])`,
+    filter.Bindings{"current_user_id": int64(1001)},
+    filter.RenderOptions{Dialect: filter.DialectPostgres},
+)
+// stmt.SQL  -> "(p.creator_id = $1 OR EXISTS (... pm.user_id = $2::bigint ...))"
+// stmt.Args -> [1001 1001]
+```
+
+Notes:
+
+- `{{field_name}}` is replaced with the schema column expression for that field (dialect-aware quoting).
+- `?` placeholders are converted to dialect placeholders and values are appended to `stmt.Args`.
+- Templates are trusted code/config; user-provided input should go through args/bindings (placeholders), not string concatenation.
+
+### Role-based helpers (`filter_scope.go`)
+
+- `NewFilterProgram(...)` -> `*filter.Program` (OR across roles, AND across required permissions)
+- The returned program can be used with:
+  - `program.RenderSQL(bindings, opts)` -> `(filter.Statement, error)`
+  - `program.IsGranted(vars, opts)` -> `(bool, error)`
+
 ## Persistence
 
 The package doesn't include built-in persistence but provides mechanisms for implementing it:
@@ -264,6 +348,8 @@ See the `*_test.go` files for detailed usage examples.
 | RBAC Core | `rbac.go` | `New`, `Add`, `Remove`, `IsGranted`, `SetParent` |
 | Roles | `role.go` | `NewRole`, `Assign`, `Permit`, `Revoke` |
 | Permissions | `permission.go` | `NewPermission`, `Match` |
+| Data Scope | `filter_scope.go` | `NewFilterProgram` |
+| Filter Engine | `filter/` | `NewEngine`, `SchemaFromStruct`, `WithMacros`, `WithSQLPredicate` |
 | Utilities | `helper.go` | `Walk`, `InherCircle`, `AnyGranted`, `AllGranted` |
 | Examples | `example_test.go` | Complete usage examples |
 

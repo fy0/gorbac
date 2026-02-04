@@ -14,7 +14,6 @@ var (
 
 	rbac *RBAC[string]
 
-	roleZero       Role[string]
 	permissionZero Permission[string]
 )
 
@@ -137,12 +136,24 @@ func TestRbacPermission(t *testing.T) {
 
 func BenchmarkRbacGranted(b *testing.B) {
 	rbac = New[string]()
-	rA.Assign(pA)
-	rB.Assign(pB)
-	rC.Assign(pC)
-	rbac.Add(rA)
-	rbac.Add(rB)
-	rbac.Add(rC)
+	if err := rA.Assign(pA); err != nil {
+		b.Fatal(err)
+	}
+	if err := rB.Assign(pB); err != nil {
+		b.Fatal(err)
+	}
+	if err := rC.Assign(pC); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rA); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rB); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rC); err != nil {
+		b.Fatal(err)
+	}
 	for i := 0; i < b.N; i++ {
 		rbac.IsGranted("role-a", pA, nil)
 	}
@@ -150,12 +161,24 @@ func BenchmarkRbacGranted(b *testing.B) {
 
 func BenchmarkRbacNotGranted(b *testing.B) {
 	rbac = New[string]()
-	rA.Assign(pA)
-	rB.Assign(pB)
-	rC.Assign(pC)
-	rbac.Add(rA)
-	rbac.Add(rB)
-	rbac.Add(rC)
+	if err := rA.Assign(pA); err != nil {
+		b.Fatal(err)
+	}
+	if err := rB.Assign(pB); err != nil {
+		b.Fatal(err)
+	}
+	if err := rC.Assign(pC); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rA); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rB); err != nil {
+		b.Fatal(err)
+	}
+	if err := rbac.Add(rC); err != nil {
+		b.Fatal(err)
+	}
 	for i := 0; i < b.N; i++ {
 		rbac.IsGranted("role-a", pB, nil)
 	}

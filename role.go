@@ -11,6 +11,7 @@ type Roles[T comparable] map[T]Role[T]
 // It matches the declaration to RoleFactoryFunc.
 func NewRole[T comparable](id T) Role[T] {
 	return Role[T]{
+		mutex:       new(sync.RWMutex),
 		ID:          id,
 		permissions: make(Permissions[T]),
 	}
@@ -20,17 +21,27 @@ func NewRole[T comparable](id T) Role[T] {
 // You can combine this struct into your own Role implement.
 // T is the type of ID
 type Role[T comparable] struct {
-	sync.RWMutex
+	mutex *sync.RWMutex
 	// ID is the serialisable identity of role
 	ID          T `json:"id"`
 	permissions Permissions[T]
 }
 
+func (role *Role[T]) init() {
+	if role.mutex == nil {
+		role.mutex = new(sync.RWMutex)
+	}
+	if role.permissions == nil {
+		role.permissions = make(Permissions[T])
+	}
+}
+
 // Assign a permission to the role.
 func (role *Role[T]) Assign(p Permission[T]) error {
-	role.Lock()
+	role.init()
+	role.mutex.Lock()
 	role.permissions[p.ID()] = p
-	role.Unlock()
+	role.mutex.Unlock()
 	return nil
 }
 
@@ -41,32 +52,35 @@ func (role *Role[T]) Permit(p Permission[T]) (ok bool) {
 		return false
 	}
 
-	role.RLock()
+	role.init()
+	role.mutex.RLock()
 	for _, rp := range role.permissions {
 		if rp.Match(p) {
 			ok = true
 			break
 		}
 	}
-	role.RUnlock()
+	role.mutex.RUnlock()
 	return
 }
 
 // Revoke the specific permission.
 func (role *Role[T]) Revoke(p Permission[T]) error {
-	role.Lock()
+	role.init()
+	role.mutex.Lock()
 	delete(role.permissions, p.ID())
-	role.Unlock()
+	role.mutex.Unlock()
 	return nil
 }
 
 // Permissions returns all permissions into a slice.
 func (role *Role[T]) Permissions() []Permission[T] {
-	role.RLock()
+	role.init()
+	role.mutex.RLock()
 	result := make([]Permission[T], 0, len(role.permissions))
 	for _, p := range role.permissions {
 		result = append(result, p)
 	}
-	role.RUnlock()
+	role.mutex.RUnlock()
 	return result
 }

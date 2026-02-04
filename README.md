@@ -138,6 +138,81 @@ if rbac.IsGranted("role-a", pA, assertion) {
 }
 ```
 
+Conditional Filters (Data Scope)
+--------------------------------
+
+This repo also includes an optional CEL -> SQL filter engine for row-level data scoping:
+
+- `github.com/mikespook/gorbac/v3/filter`: a CEL -> SQL filter engine (ported from `memos`).
+- Helpers in package `gorbac` to attach per-permission CEL filters (`FilterPermission`) and combine them across roles (`NewFilterProgram`).
+
+At a high level, permissions still decide whether a role is granted, and the attached
+filter decides which rows are accessible for that permission.
+
+The filter engine supports (subset):
+
+- Scalar columns (`FieldKindScalar`), including comparisons (`==`, `!=`, `<`, ...), `in`, and string helpers (`contains`, `startsWith`, `endsWith`)
+- JSON boolean fields (`FieldKindJSONBool`)
+- JSON string lists with membership + comprehensions (`FieldKindJSONList`, e.g. `"foo" in tags`, `tags.exists(t, t.contains(q))`, `t.startsWith(q)`)
+- Extension hooks: register custom CEL macros/env options (`filter.WithEnvOptions`, `filter.WithMacros`) and rewrite the compiled condition tree (`filter.WithCompileHook`)
+- Custom predicates: register dialect-aware SQL snippets and reference them from CEL via `sql("name", [...])` (`filter.WithSQLPredicate`)
+
+Example (union scope for roles that can `read`):
+
+```go
+import (
+	"github.com/google/cel-go/cel"
+	"github.com/mikespook/gorbac/v3"
+	"github.com/mikespook/gorbac/v3/filter"
+)
+
+schema := filter.Schema{
+	Name: "example",
+	Fields: map[string]*filter.Field{
+		"creator_id":  &filter.Field{Name: "creator_id", Type: filter.FieldTypeInt, Column: filter.Column{Table: "t", Name: "creator_id"}},
+		"visibility":  &filter.Field{Name: "visibility", Type: filter.FieldTypeString, Column: filter.Column{Table: "t", Name: "visibility"}},
+	},
+	EnvOptions: []cel.EnvOption{
+		cel.Variable("creator_id", cel.IntType),
+		cel.Variable("visibility", cel.StringType),
+		cel.Variable("current_user_id", cel.IntType),
+	},
+}
+
+rbac := gorbac.New[string]()
+
+r1 := gorbac.NewRole("role-creator")
+_ = r1.Assign(gorbac.NewFilterPermission("read", `creator_id == current_user_id`))
+_ = rbac.Add(r1)
+
+r2 := gorbac.NewRole("role-public")
+_ = r2.Assign(gorbac.NewFilterPermission("read", `visibility == "PUBLIC"`))
+_ = rbac.Add(r2)
+
+program, err := gorbac.NewFilterProgram(
+	rbac,
+	[]string{"role-creator", "role-public"},
+	[]gorbac.Permission[string]{gorbac.NewPermission("read")},
+	schema,
+	// Optional: filter.WithMacros(...), filter.WithCompileHook(...), filter.WithSQLPredicate(...)
+)
+if err != nil {
+	panic(err)
+}
+
+stmt, err := program.RenderSQL(filter.Bindings{"current_user_id": int64(123)}, filter.RenderOptions{
+	Dialect: filter.DialectPostgres,
+})
+if err != nil {
+	panic(err)
+}
+
+// stmt.SQL  -> "(t.creator_id = $1 OR t.visibility = $2)"
+// stmt.Args -> [123, "PUBLIC"]
+```
+
+Tip: if your schema matches a Go struct, you can build it via `filter.SchemaFromStruct(...)`.
+
 Utility Functions
 -----------------
 
