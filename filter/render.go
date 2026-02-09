@@ -20,6 +20,8 @@ type renderer struct {
 	// For DialectPostgresNamedArgs we still render Postgres SQL, but placeholders use
 	// pgx-style named arguments (`@name`).
 	dialect            DialectName
+	tableAliases       map[string]string
+	omitTableQualifier bool
 	placeholderStyle   placeholderStyle
 	placeholderOffset  int
 	placeholderCounter int
@@ -47,6 +49,8 @@ func newRenderer(schema Schema, opts RenderOptions, bindings Bindings) *renderer
 	return &renderer{
 		schema:            schema,
 		dialect:           dialect,
+		tableAliases:      opts.TableAliases,
+		omitTableQualifier: opts.OmitTableQualifier,
 		placeholderStyle:  style,
 		placeholderOffset: opts.PlaceholderOffset,
 		bindings:          bindings,
@@ -121,6 +125,29 @@ func (r *renderer) renderCondition(cond Condition) (renderResult, error) {
 	}
 }
 
+func (r *renderer) qualifyColumn(col Column) string {
+	table := col.Table
+	if r.omitTableQualifier {
+		table = ""
+	} else if r.tableAliases != nil {
+		if alias, ok := r.tableAliases[col.Table]; ok {
+			table = alias
+		}
+	}
+	return qualifyColumn(r.dialect, Column{Table: table, Name: col.Name})
+}
+
+func (r *renderer) columnExpr(field *Field) string {
+	if field == nil {
+		return ""
+	}
+	base := r.qualifyColumn(field.Column)
+	if expr, ok := field.Expressions[r.dialect]; ok && expr != "" {
+		return fmt.Sprintf(expr, base)
+	}
+	return base
+}
+
 func (r *renderer) renderSQLPredicateCondition(cond *SQLPredicateCondition) (renderResult, error) {
 	template := cond.SQL.template(r.dialect)
 	if strings.TrimSpace(template) == "" {
@@ -185,7 +212,7 @@ func (r *renderer) interpolateSQLColumns(template string) (string, error) {
 
 			switch field.Kind {
 			case "", FieldKindScalar, FieldKindBoolColumn:
-				out.WriteString(field.columnExpr(r.dialect))
+				out.WriteString(r.columnExpr(field))
 			default:
 				return "", fmt.Errorf("field %q (kind %s) not supported in SQL template placeholders", name, field.Kind)
 			}
@@ -357,7 +384,7 @@ func (r *renderer) renderFieldPredicate(cond *FieldPredicateCondition) (renderRe
 		if field.Type != FieldTypeBool {
 			return renderResult{}, fmt.Errorf("field %q cannot be used as a predicate", cond.Field)
 		}
-		column := field.columnExpr(r.dialect)
+		column := r.columnExpr(field)
 		switch r.dialect {
 		case DialectSQLite:
 			return renderResult{sql: fmt.Sprintf("%s != 0", column)}, nil
@@ -443,7 +470,7 @@ func (r *renderer) renderFieldComparison(field *Field, op ComparisonOperator, ri
 		return renderResult{}, err
 	}
 
-	columnExpr := field.columnExpr(r.dialect)
+	columnExpr := r.columnExpr(field)
 	if value == nil {
 		switch op {
 		case CompareEq:
@@ -545,7 +572,7 @@ func (r *renderer) renderInCondition(cond *InCondition) (renderResult, error) {
 	// Note: we keep the legacy placeholder-per-element behavior for other
 	// dialects to maximize compatibility with database/sql drivers.
 	if r.placeholderStyle == placeholderStyleNamedArgs && len(flat) > 1 {
-		column := field.columnExpr(r.dialect)
+		column := r.columnExpr(field)
 		switch field.Type {
 		case FieldTypeString:
 			values := make([]string, 0, len(flat))
@@ -604,7 +631,7 @@ func (r *renderer) renderInCondition(cond *InCondition) (renderResult, error) {
 		}
 	}
 
-	column := field.columnExpr(r.dialect)
+	column := r.columnExpr(field)
 	return renderResult{sql: fmt.Sprintf("%s IN (%s)", column, strings.Join(placeholders, ","))}, nil
 }
 
@@ -629,7 +656,7 @@ func (r *renderer) renderAliasInList(aliasName string, field *Field, values []Va
 	}
 
 	conditions := make([]string, 0, len(flat))
-	arrayExpr := jsonArrayExpr(r.dialect, field)
+	arrayExpr := r.jsonArrayExpr(field)
 	hierarchical := aliasName == "tag"
 
 	for _, raw := range flat {
@@ -702,7 +729,7 @@ func (r *renderer) renderElementInCondition(cond *ElementInCondition) (renderRes
 		return renderResult{}, fmt.Errorf("list membership requires string value, got %T", raw)
 	}
 
-	arrayExpr := jsonArrayExpr(r.dialect, field)
+	arrayExpr := r.jsonArrayExpr(field)
 	switch r.dialect {
 	case DialectSQLite:
 		return renderResult{sql: fmt.Sprintf("%s LIKE %s", arrayExpr, r.addArg(fmt.Sprintf(`%%"%s"%%`, str)))}, nil
@@ -752,7 +779,7 @@ func (r *renderer) renderFunctionComparison(fn *FunctionValue, op ComparisonOper
 		return renderResult{}, fmt.Errorf("size() comparison expects integer value: %w", err)
 	}
 
-	expr := jsonArrayLengthExpr(r.dialect, field)
+	expr := r.jsonArrayLengthExpr(field)
 	placeholder := r.addArg(num)
 	return renderResult{sql: fmt.Sprintf("%s %s %s", expr, string(op), placeholder)}, nil
 }
@@ -770,7 +797,7 @@ func (r *renderer) renderJSONBoolComparison(field *Field, op ComparisonOperator,
 		return renderResult{}, fmt.Errorf("field %q expects bool value", field.Name)
 	}
 
-	jsonExpr := jsonExtractExpr(r.dialect, field)
+	jsonExpr := r.jsonExtractExpr(field)
 	switch r.dialect {
 	case DialectSQLite:
 		switch op {
@@ -857,7 +884,7 @@ func (r *renderer) renderJSONArrayStartsWith(field *Field, prefix string, _ Comp
 	if field == nil {
 		return renderResult{}, fmt.Errorf("field is nil")
 	}
-	arrayExpr := jsonArrayExpr(r.dialect, field)
+	arrayExpr := r.jsonArrayExpr(field)
 
 	switch r.dialect {
 	case DialectSQLite, DialectMySQL:
@@ -879,7 +906,7 @@ func (r *renderer) renderJSONArrayEndsWith(field *Field, suffix string, _ Compre
 	if field == nil {
 		return renderResult{}, fmt.Errorf("field is nil")
 	}
-	arrayExpr := jsonArrayExpr(r.dialect, field)
+	arrayExpr := r.jsonArrayExpr(field)
 	pattern := fmt.Sprintf(`%%%s"%%`, suffix)
 
 	likeExpr := r.buildJSONArrayLike(arrayExpr, pattern)
@@ -890,7 +917,7 @@ func (r *renderer) renderJSONArrayContains(field *Field, substring string, _ Com
 	if field == nil {
 		return renderResult{}, fmt.Errorf("field is nil")
 	}
-	arrayExpr := jsonArrayExpr(r.dialect, field)
+	arrayExpr := r.jsonArrayExpr(field)
 	pattern := fmt.Sprintf(`%%%s%%`, substring)
 
 	likeExpr := r.buildJSONArrayLike(arrayExpr, pattern)
@@ -927,7 +954,7 @@ func (r *renderer) jsonBoolPredicate(field *Field) (string, error) {
 	if field == nil {
 		return "", fmt.Errorf("field is nil")
 	}
-	expr := jsonExtractExpr(r.dialect, field)
+	expr := r.jsonExtractExpr(field)
 	switch r.dialect {
 	case DialectSQLite:
 		return fmt.Sprintf("%s IS TRUE", expr), nil
@@ -961,7 +988,7 @@ func (r *renderer) renderContainsCondition(cond *ContainsCondition) (renderResul
 		return renderResult{trivial: true}, nil
 	}
 
-	column := field.columnExpr(r.dialect)
+	column := r.columnExpr(field)
 	arg := fmt.Sprintf("%%%s%%", needle)
 	switch r.dialect {
 	case DialectPostgres:
@@ -992,7 +1019,7 @@ func (r *renderer) renderStartsWithCondition(cond *StartsWithCondition) (renderR
 		return renderResult{trivial: true}, nil
 	}
 
-	column := field.columnExpr(r.dialect)
+	column := r.columnExpr(field)
 	arg := fmt.Sprintf("%s%%", prefix)
 	switch r.dialect {
 	case DialectPostgres:
@@ -1023,7 +1050,7 @@ func (r *renderer) renderEndsWithCondition(cond *EndsWithCondition) (renderResul
 		return renderResult{trivial: true}, nil
 	}
 
-	column := field.columnExpr(r.dialect)
+	column := r.columnExpr(field)
 	arg := fmt.Sprintf("%%%s", suffix)
 	switch r.dialect {
 	case DialectPostgres:
@@ -1102,11 +1129,21 @@ func invertComparisonOperator(op ComparisonOperator) (ComparisonOperator, error)
 }
 
 func qualifyColumn(d DialectName, col Column) string {
+	table := strings.TrimSpace(col.Table)
+	if table == "" {
+		switch d {
+		case DialectPostgres:
+			return col.Name
+		default:
+			return fmt.Sprintf("`%s`", col.Name)
+		}
+	}
+
 	switch d {
 	case DialectPostgres:
-		return fmt.Sprintf("%s.%s", col.Table, col.Name)
+		return fmt.Sprintf("%s.%s", table, col.Name)
 	default:
-		return fmt.Sprintf("`%s`.`%s`", col.Table, col.Name)
+		return fmt.Sprintf("`%s`.`%s`", table, col.Name)
 	}
 }
 
@@ -1117,12 +1154,12 @@ func jsonPath(field *Field) string {
 	return "$." + strings.Join(field.JSONPath, ".")
 }
 
-func jsonExtractExpr(d DialectName, field *Field) string {
+func (r *renderer) jsonExtractExpr(field *Field) string {
 	if field == nil {
 		return ""
 	}
-	column := qualifyColumn(d, field.Column)
-	switch d {
+	column := r.qualifyColumn(field.Column)
+	switch r.dialect {
 	case DialectSQLite, DialectMySQL:
 		return fmt.Sprintf("JSON_EXTRACT(%s, '%s')", column, jsonPath(field))
 	case DialectPostgres:
@@ -1132,12 +1169,12 @@ func jsonExtractExpr(d DialectName, field *Field) string {
 	}
 }
 
-func jsonArrayExpr(d DialectName, field *Field) string {
+func (r *renderer) jsonArrayExpr(field *Field) string {
 	if field == nil {
 		return ""
 	}
-	column := qualifyColumn(d, field.Column)
-	switch d {
+	column := r.qualifyColumn(field.Column)
+	switch r.dialect {
 	case DialectSQLite, DialectMySQL:
 		return fmt.Sprintf("JSON_EXTRACT(%s, '%s')", column, jsonPath(field))
 	case DialectPostgres:
@@ -1147,12 +1184,12 @@ func jsonArrayExpr(d DialectName, field *Field) string {
 	}
 }
 
-func jsonArrayLengthExpr(d DialectName, field *Field) string {
+func (r *renderer) jsonArrayLengthExpr(field *Field) string {
 	if field == nil {
 		return ""
 	}
-	arrayExpr := jsonArrayExpr(d, field)
-	switch d {
+	arrayExpr := r.jsonArrayExpr(field)
+	switch r.dialect {
 	case DialectSQLite:
 		return fmt.Sprintf("JSON_ARRAY_LENGTH(COALESCE(%s, JSON_ARRAY()))", arrayExpr)
 	case DialectMySQL:

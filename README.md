@@ -202,6 +202,9 @@ if err != nil {
 
 stmt, err := program.RenderSQL(filter.Bindings{"current_user_id": int64(123)}, filter.RenderOptions{
 	Dialect: filter.DialectPostgres,
+	// Optional when embedding the fragment into queries that use different aliases:
+	// TableAliases: map[string]string{"t": "p"}, // renders "p.creator_id" instead of "t.creator_id"
+	// OmitTableQualifier: true,               // renders "creator_id" instead of "t.creator_id"
 })
 if err != nil {
 	panic(err)

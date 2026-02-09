@@ -166,6 +166,23 @@ func (e *Engine) CompileToStatement(filter string, bindings Bindings, opts Rende
 type RenderOptions struct {
 	Dialect           DialectName
 	PlaceholderOffset int
+	// TableAliases maps schema column table names to SQL qualifiers (usually aliases).
+	//
+	// This is useful when the schema was defined against a concrete table name but
+	// the actual query uses a table alias:
+	//
+	//   schema column: {Table: "project", Name: "id"}
+	//   query: FROM project p
+	//   opts: TableAliases{"project": "p"} -> renders "p.id"
+	//
+	// A mapped empty string disables qualification for that table.
+	TableAliases map[string]string
+	// OmitTableQualifier disables table qualification for all columns, rendering
+	// "id" instead of "t.id".
+	//
+	// This is useful when composing fragments into queries that use different
+	// aliases (or no alias).
+	OmitTableQualifier bool
 }
 
 // Statement contains the rendered SQL fragment and its args.

@@ -227,6 +227,22 @@ finalSQL  := "(" + stmt1.SQL + ") AND (" + stmt2.SQL + ")"
 finalArgs := append(stmt1.Args, stmt2.Args...)
 ```
 
+### SQL Output: table qualifiers
+
+By default, fields render as `table.column` using `filter.Field.Column.Table`.
+
+When embedding the generated fragment into queries that use **aliases** (or a different qualifier),
+use `filter.RenderOptions.TableAliases` to rewrite table names, or `filter.RenderOptions.OmitTableQualifier`
+to render unqualified column names:
+
+```go
+stmt, _ := engine.CompileToStatement(`creator_id == current_user_id`, bindings, filter.RenderOptions{
+    Dialect: filter.DialectPostgres,
+    TableAliases: map[string]string{"project": "p"}, // renders "p.creator_id"
+    // OmitTableQualifier: true,                    // renders "creator_id"
+})
+```
+
 ### Extension hooks
 
 The filter engine is designed to be extended without forking:
