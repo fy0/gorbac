@@ -14,7 +14,7 @@ const (
 )
 
 type renderer struct {
-	schema             Schema
+	schema Schema
 	// dialect is the normalized "SQL syntax" dialect.
 	//
 	// For DialectPostgresNamedArgs we still render Postgres SQL, but placeholders use
@@ -534,6 +534,50 @@ func (r *renderer) renderInCondition(cond *InCondition) (renderResult, error) {
 	}
 	if len(flat) == 0 {
 		return renderResult{sql: "1 = 0", unsatisfiable: true}, nil
+	}
+
+	// For pgx named-args dialect, prefer a single array argument to avoid
+	// exploding `IN (@p1,@p2,...)` placeholders.
+	//
+	// This renders:
+	//   col IN (a,b,c)  ->  col = ANY(@pN)  with @pN = []T{a,b,c}
+	//
+	// Note: we keep the legacy placeholder-per-element behavior for other
+	// dialects to maximize compatibility with database/sql drivers.
+	if r.placeholderStyle == placeholderStyleNamedArgs && len(flat) > 1 {
+		column := field.columnExpr(r.dialect)
+		switch field.Type {
+		case FieldTypeString:
+			values := make([]string, 0, len(flat))
+			for _, raw := range flat {
+				if raw == nil {
+					return renderResult{}, fmt.Errorf("field %q does not support IN() with null values", field.Name)
+				}
+				str, ok := raw.(string)
+				if !ok {
+					return renderResult{}, fmt.Errorf("field %q expects string values", field.Name)
+				}
+				values = append(values, str)
+			}
+			placeholder := r.addArg(values)
+			return renderResult{sql: fmt.Sprintf("%s = ANY(%s)", column, placeholder)}, nil
+		case FieldTypeInt, FieldTypeTimestamp:
+			values := make([]int64, 0, len(flat))
+			for _, raw := range flat {
+				if raw == nil {
+					return renderResult{}, fmt.Errorf("field %q does not support IN() with null values", field.Name)
+				}
+				num, err := toInt64(raw)
+				if err != nil {
+					return renderResult{}, fmt.Errorf("field %q expects integer values: %w", field.Name, err)
+				}
+				values = append(values, num)
+			}
+			placeholder := r.addArg(values)
+			return renderResult{sql: fmt.Sprintf("%s = ANY(%s)", column, placeholder)}, nil
+		default:
+			return renderResult{}, fmt.Errorf("field %q does not support IN()", field.Name)
+		}
 	}
 
 	placeholders := make([]string, 0, len(flat))

@@ -24,10 +24,10 @@ type permissionClosureCache[T comparable] struct {
 
 func newPermissionClosureCache[T comparable](rbac *RBAC[T]) *permissionClosureCache[T] {
 	return &permissionClosureCache[T]{
-		rbac:           rbac,
-		roleClosure:    make(map[T][]T),
+		rbac:              rbac,
+		roleClosure:       make(map[T][]T),
 		directPermissions: make(map[T][]Permission[T]),
-		allPermissions: make(map[T][]Permission[T]),
+		allPermissions:    make(map[T][]Permission[T]),
 	}
 }
 
