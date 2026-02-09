@@ -2,9 +2,38 @@ package gorbac
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fy0/gorbac/v3/filter"
 )
+
+type filterProgramConfig struct {
+	extraFilterCEL string
+}
+
+// FilterProgramOption customizes NewFilterProgram behavior.
+//
+// Options can be provided to NewFilterProgram alongside filter.EngineOption values.
+type FilterProgramOption func(*filterProgramConfig)
+
+// WithExtraFilterCEL adds an extra CEL boolean expression that is AND-ed with the
+// permission-derived scope.
+//
+// This is useful for attaching user query filters (e.g. `q == "" || name.contains(q)`)
+// without having to compile and compose multiple statements manually.
+func WithExtraFilterCEL(expr string) FilterProgramOption {
+	return func(cfg *filterProgramConfig) {
+		expr = strings.TrimSpace(expr)
+		if expr == "" {
+			return
+		}
+		if cfg.extraFilterCEL == "" {
+			cfg.extraFilterCEL = expr
+			return
+		}
+		cfg.extraFilterCEL = fmt.Sprintf("(%s) && (%s)", cfg.extraFilterCEL, expr)
+	}
+}
 
 type permissionClosureCache[T comparable] struct {
 	rbac *RBAC[T]
@@ -114,6 +143,10 @@ func matchPermissions[T comparable](all []Permission[T], requested Permission[T]
 //   - Multiple matches for one permission (e.g. inherited): OR
 //   - Across roles: OR
 //
+// Optional args can include:
+//   - `filter.EngineOption` values (forwarded to `filter.NewEngine`)
+//   - `FilterProgramOption` values (e.g. `WithExtraFilterCEL(...)`)
+//
 // The returned program can be:
 //   - rendered into SQL via `program.RenderSQL(bindings, opts)`
 //   - evaluated in-memory via `program.IsGranted(vars, opts)`
@@ -122,15 +155,39 @@ func NewFilterProgram[T comparable](
 	roles []T,
 	permissions []Permission[T],
 	schema filter.Schema,
-	engineOpts ...filter.EngineOption,
+	opts ...any,
 ) (*filter.Program, error) {
 	if len(permissions) == 0 {
 		return nil, fmt.Errorf("permissions is empty")
 	}
 
+	cfg := &filterProgramConfig{}
+	engineOpts := make([]filter.EngineOption, 0, len(opts))
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case nil:
+			continue
+		case filter.EngineOption:
+			engineOpts = append(engineOpts, v)
+		case FilterProgramOption:
+			v(cfg)
+		default:
+			return nil, fmt.Errorf("unsupported NewFilterProgram option %T", opt)
+		}
+	}
+
 	engine, err := filter.NewEngine(schema, engineOpts...)
 	if err != nil {
 		return nil, err
+	}
+
+	var extraCond filter.Condition
+	if strings.TrimSpace(cfg.extraFilterCEL) != "" {
+		extraProg, err := engine.Compile(cfg.extraFilterCEL)
+		if err != nil {
+			return nil, err
+		}
+		extraCond = extraProg.ConditionTree()
 	}
 
 	cache := newPermissionClosureCache(rbac)
@@ -151,7 +208,11 @@ func NewFilterProgram[T comparable](
 	if len(roleConds) == 0 {
 		return filter.NewProgramFromCondition(schema, &filter.ConstantCondition{Value: false}), nil
 	}
-	return filter.NewProgramFromCondition(schema, orAll(roleConds)), nil
+	cond := orAll(roleConds)
+	if extraCond != nil {
+		cond = andAll([]filter.Condition{cond, extraCond})
+	}
+	return filter.NewProgramFromCondition(schema, cond), nil
 }
 
 func buildSingleRoleCondition[T comparable](

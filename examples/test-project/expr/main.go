@@ -83,6 +83,7 @@ func main() {
 
 	rolePublic := gorbac.NewRole("role-public")
 	_ = rolePublic.Assign(gorbac.NewFilterPermission("project.read", `visibility == "PUBLIC"`))
+	_ = rolePublic.Assign(gorbac.NewPermission("project.query"))
 	_ = rbac.Add(rolePublic)
 
 	userRoles := []string{"role-creator", "role-public"}
@@ -93,8 +94,9 @@ func main() {
 
 	required := []gorbac.Permission[string]{gorbac.NewPermission("project.read")}
 
-	// 1) data scope from permissions (OR across roles).
-	scopeProgram, err := gorbac.NewFilterProgram(rbac, userRoles, required, schema)
+	// 1) data scope from permissions (OR across roles) + optional user query (AND).
+	queryExpr := `query == "" || name.startsWith(query)`
+	scopeProgram, err := gorbac.NewFilterProgram(rbac, userRoles, required, schema, gorbac.WithExtraFilterCEL(queryExpr))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -136,32 +138,6 @@ func main() {
 		fmt.Printf("creator_id=%d visibility=%s name=%s -> allowed=%v\n", row.CreatorID, row.Visibility, row.Name, allowed)
 	}
 	fmt.Println()
-
-	// 3) optional user query (AND).
-	engine, err := filter.NewEngine(schema)
-	if err != nil {
-		log.Fatal(err)
-	}
-	queryStmt, err := engine.CompileToStatement(`query == "" || name.startsWith(query)`, bindings, filter.RenderOptions{
-		Dialect:           filter.DialectPostgres,
-		PlaceholderOffset: len(scopeStmt.Args),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	where := []string{}
-	args := []any{}
-	if scopeStmt.SQL != "" {
-		where = append(where, "("+scopeStmt.SQL+")")
-		args = append(args, scopeStmt.Args...)
-	}
-	if queryStmt.SQL != "" {
-		where = append(where, "("+queryStmt.SQL+")")
-		args = append(args, queryStmt.Args...)
-	}
-
-	fmt.Printf("SQL:  %s\nARGS: %#v\n", joinWhere(where), args)
 }
 
 func joinWhere(parts []string) string {

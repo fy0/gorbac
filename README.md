@@ -145,6 +145,7 @@ This repo also includes an optional CEL -> SQL filter engine for row-level data 
 
 - `github.com/fy0/gorbac/v3/filter`: a CEL -> SQL filter engine (ported from `memos`).
 - Helpers in package `gorbac` to attach per-permission CEL filters (`FilterPermission`) and combine them across roles (`NewFilterProgram`).
+- Optional: AND an extra CEL filter via `gorbac.WithExtraFilterCEL(...)` (useful for user query/search filters).
 
 At a high level, permissions still decide whether a role is granted, and the attached
 filter decides which rows are accessible for that permission.
@@ -194,6 +195,8 @@ program, err := gorbac.NewFilterProgram(
 	[]string{"role-creator", "role-public"},
 	[]gorbac.Permission[string]{gorbac.NewPermission("read")},
 	schema,
+	// Optional: AND with an extra CEL filter.
+	// gorbac.WithExtraFilterCEL(`q == "" || name.contains(q)`),
 	// Optional: filter.WithMacros(...), filter.WithCompileHook(...), filter.WithSQLPredicate(...)
 )
 if err != nil {

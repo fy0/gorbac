@@ -287,6 +287,7 @@ Notes:
 ### Role-based helpers (`filter_scope.go`)
 
 - `NewFilterProgram(...)` -> `*filter.Program` (OR across roles, AND across required permissions)
+- Optional: `gorbac.WithExtraFilterCEL(...)` to AND an additional CEL filter (e.g. user query/search) onto the permission scope.
 - The returned program can be used with:
   - `program.RenderSQL(bindings, opts)` -> `(filter.Statement, error)`
   - `program.IsGranted(vars, opts)` -> `(bool, error)`

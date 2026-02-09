@@ -87,3 +87,51 @@ func TestNewFilterProgram_WithMacro(t *testing.T) {
 		t.Fatalf("unexpected args: %#v", stmt.Args)
 	}
 }
+
+func TestNewFilterProgram_WithExtraFilterCEL_StdPermission(t *testing.T) {
+	rbac := gorbac.New[string]()
+
+	role := gorbac.NewRole("r1")
+	_ = role.Assign(gorbac.NewPermission("read"))
+	_ = rbac.Add(role)
+
+	program, err := gorbac.NewFilterProgram(
+		rbac,
+		[]string{"r1"},
+		[]gorbac.Permission[string]{gorbac.NewPermission("read")},
+		testFilterSchema(),
+		gorbac.WithExtraFilterCEL(`visibility == "PUBLIC"`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := program.RenderSQL(nil, filter.RenderOptions{Dialect: filter.DialectPostgres})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantSQL := `t.visibility = $1`
+	if stmt.SQL != wantSQL {
+		t.Fatalf("unexpected SQL.\nwant: %s\ngot:  %s", wantSQL, stmt.SQL)
+	}
+	if len(stmt.Args) != 1 || stmt.Args[0] != "PUBLIC" {
+		t.Fatalf("unexpected args: %#v", stmt.Args)
+	}
+
+	allowed, err := program.IsGranted(map[string]any{"visibility": "PUBLIC"}, filter.EvalOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !allowed {
+		t.Fatalf("expected PUBLIC to be allowed")
+	}
+
+	allowed, err = program.IsGranted(map[string]any{"visibility": "PRIVATE"}, filter.EvalOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allowed {
+		t.Fatalf("expected PRIVATE to be denied")
+	}
+}
