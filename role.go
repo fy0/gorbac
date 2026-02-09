@@ -54,6 +54,16 @@ func (role *Role[T]) Permit(p Permission[T]) (ok bool) {
 
 	role.init()
 	role.mutex.RLock()
+	// Fast path: permission IDs are used as map keys for exact matches.
+	//
+	// This preserves existing behavior for layered / custom matching because
+	// we still fall back to scanning the full permission set when needed.
+	if rp, exists := role.permissions[p.ID()]; exists {
+		if rp.Match(p) {
+			role.mutex.RUnlock()
+			return true
+		}
+	}
 	for _, rp := range role.permissions {
 		if rp.Match(p) {
 			ok = true

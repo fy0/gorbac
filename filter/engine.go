@@ -172,6 +172,11 @@ type RenderOptions struct {
 type Statement struct {
 	SQL  string
 	Args []any
+	// NamedArgs is populated when rendering with DialectPostgresNamedArgs.
+	//
+	// It is intended to be passed to pgx as `pgx.NamedArgs(stmt.NamedArgs)`:
+	// `conn.Query(ctx, "SELECT ... WHERE "+stmt.SQL, pgx.NamedArgs(stmt.NamedArgs))`
+	NamedArgs Bindings
 }
 
 // RenderSQL converts the program into a dialect-specific SQL fragment.

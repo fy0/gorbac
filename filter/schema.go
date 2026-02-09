@@ -16,6 +16,10 @@ const (
 	DialectSQLite   DialectName = "sqlite"
 	DialectMySQL    DialectName = "mysql"
 	DialectPostgres DialectName = "postgres"
+	// DialectPostgresNamedArgs renders Postgres SQL using named arguments (`@name`).
+	//
+	// The generated statement uses `Statement.NamedArgs` instead of positional `Statement.Args`.
+	DialectPostgresNamedArgs DialectName = "postgres_pgx"
 )
 
 // FieldType represents the logical type of a field.

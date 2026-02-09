@@ -5,12 +5,26 @@ import (
 	"strings"
 )
 
+type placeholderStyle int
+
+const (
+	placeholderStyleQuestion placeholderStyle = iota
+	placeholderStyleDollar
+	placeholderStyleNamedArgs
+)
+
 type renderer struct {
 	schema             Schema
+	// dialect is the normalized "SQL syntax" dialect.
+	//
+	// For DialectPostgresNamedArgs we still render Postgres SQL, but placeholders use
+	// pgx-style named arguments (`@name`).
 	dialect            DialectName
+	placeholderStyle   placeholderStyle
 	placeholderOffset  int
 	placeholderCounter int
 	args               []any
+	namedArgs          Bindings
 	bindings           Bindings
 }
 
@@ -21,9 +35,19 @@ type renderResult struct {
 }
 
 func newRenderer(schema Schema, opts RenderOptions, bindings Bindings) *renderer {
+	dialect := opts.Dialect
+	style := placeholderStyleQuestion
+	switch opts.Dialect {
+	case DialectPostgres:
+		style = placeholderStyleDollar
+	case DialectPostgresNamedArgs:
+		style = placeholderStyleNamedArgs
+		dialect = DialectPostgres
+	}
 	return &renderer{
 		schema:            schema,
-		dialect:           opts.Dialect,
+		dialect:           dialect,
+		placeholderStyle:  style,
 		placeholderOffset: opts.PlaceholderOffset,
 		bindings:          bindings,
 	}
@@ -37,10 +61,24 @@ func (r *renderer) Render(cond Condition) (Statement, error) {
 
 	switch {
 	case result.unsatisfiable:
+		if r.placeholderStyle == placeholderStyleNamedArgs {
+			return Statement{SQL: "1 = 0", Args: []any{}, NamedArgs: Bindings{}}, nil
+		}
 		return Statement{SQL: "1 = 0", Args: []any{}}, nil
 	case result.trivial:
+		if r.placeholderStyle == placeholderStyleNamedArgs {
+			return Statement{SQL: "", Args: []any{}, NamedArgs: Bindings{}}, nil
+		}
 		return Statement{SQL: "", Args: []any{}}, nil
 	default:
+		if r.placeholderStyle == placeholderStyleNamedArgs {
+			namedArgs := r.namedArgs
+			if namedArgs == nil {
+				namedArgs = Bindings{}
+			}
+			return Statement{SQL: result.sql, Args: []any{}, NamedArgs: namedArgs}, nil
+		}
+
 		args := r.args
 		if args == nil {
 			args = []any{}
@@ -953,11 +991,21 @@ func (r *renderer) renderEndsWithCondition(cond *EndsWithCondition) (renderResul
 
 func (r *renderer) addArg(value any) string {
 	r.placeholderCounter++
-	r.args = append(r.args, value)
-	if r.dialect == DialectPostgres {
+	switch r.placeholderStyle {
+	case placeholderStyleDollar:
+		r.args = append(r.args, value)
 		return fmt.Sprintf("$%d", r.placeholderOffset+r.placeholderCounter)
+	case placeholderStyleNamedArgs:
+		if r.namedArgs == nil {
+			r.namedArgs = Bindings{}
+		}
+		name := fmt.Sprintf("p%d", r.placeholderOffset+r.placeholderCounter)
+		r.namedArgs[name] = value
+		return "@" + name
+	default:
+		r.args = append(r.args, value)
+		return "?"
 	}
-	return "?"
 }
 
 func (r *renderer) addBoolArg(value bool) string {
