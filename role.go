@@ -5,9 +5,9 @@ import "sync"
 // Role describes the role contract.
 type Role[T comparable] interface {
 	ID() T
-	Assign(Permission[T]) error
-	Permit(Permission[T]) bool
-	Revoke(Permission[T]) error
+	Assign(...Permission[T]) error
+	Permit(...Permission[T]) bool
+	Revoke(...Permission[T]) error
 	Permissions() []Permission[T]
 	PermissionsMap() map[T]Permission[T]
 	Get(id T) (Permission[T], bool)
@@ -55,57 +55,75 @@ func (role *StdRole[T]) ID() T {
 	return role.IDValue
 }
 
-// Assign a permission to the role.
-func (role *StdRole[T]) Assign(p Permission[T]) error {
+// Assign permissions to the role.
+func (role *StdRole[T]) Assign(perms ...Permission[T]) error {
+	if len(perms) == 0 {
+		return nil
+	}
 	role.init()
 	role.mutex.Lock()
-	role.permissions[p.ID()] = p
-	if _, ok := p.(interface {
-		CEL() (string, error)
-	}); ok {
-		role.filterPermissions[p.ID()] = p
-	} else {
-		delete(role.filterPermissions, p.ID())
+	for _, p := range perms {
+		role.permissions[p.ID()] = p
+		if _, ok := p.(interface {
+			CEL() (string, error)
+		}); ok {
+			role.filterPermissions[p.ID()] = p
+		} else {
+			delete(role.filterPermissions, p.ID())
+		}
 	}
 	role.mutex.Unlock()
 	return nil
 }
 
-// Permit returns true if the role has specific permission.
-func (role *StdRole[T]) Permit(p Permission[T]) (ok bool) {
-	var zero Permission[T]
-	if p == zero {
+// Permit returns true if the role has all specified permissions.
+func (role *StdRole[T]) Permit(perms ...Permission[T]) bool {
+	if len(perms) == 0 {
 		return false
 	}
-
+	var zero Permission[T]
 	role.init()
 	role.mutex.RLock()
-	// Fast path: permission IDs are used as map keys for exact matches.
-	//
-	// This preserves existing behavior for layered / custom matching because
-	// we still fall back to scanning the full permission set when needed.
-	if rp, exists := role.permissions[p.ID()]; exists {
-		if rp.Match(p) {
+	for _, p := range perms {
+		if p == zero {
 			role.mutex.RUnlock()
-			return true
+			return false
 		}
-	}
-	for _, rp := range role.permissions {
-		if rp.Match(p) {
-			ok = true
-			break
+		matched := false
+		// Fast path: permission IDs are used as map keys for exact matches.
+		//
+		// This preserves existing behavior for layered / custom matching because
+		// we still fall back to scanning the full permission set when needed.
+		if rp, exists := role.permissions[p.ID()]; exists && rp.Match(p) {
+			matched = true
+		} else {
+			for _, rp := range role.permissions {
+				if rp.Match(p) {
+					matched = true
+					break
+				}
+			}
+		}
+		if !matched {
+			role.mutex.RUnlock()
+			return false
 		}
 	}
 	role.mutex.RUnlock()
-	return
+	return true
 }
 
-// Revoke the specific permission.
-func (role *StdRole[T]) Revoke(p Permission[T]) error {
+// Revoke the specific permissions.
+func (role *StdRole[T]) Revoke(perms ...Permission[T]) error {
+	if len(perms) == 0 {
+		return nil
+	}
 	role.init()
 	role.mutex.Lock()
-	delete(role.permissions, p.ID())
-	delete(role.filterPermissions, p.ID())
+	for _, p := range perms {
+		delete(role.permissions, p.ID())
+		delete(role.filterPermissions, p.ID())
+	}
 	role.mutex.Unlock()
 	return nil
 }

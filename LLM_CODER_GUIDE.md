@@ -74,9 +74,9 @@ The `Role[T]` interface defines the contract, and `StdRole[T]` is the default im
 ```go
 type Role[T comparable] interface {
     ID() T
-    Assign(Permission[T]) error
-    Permit(Permission[T]) bool
-    Revoke(Permission[T]) error
+    Assign(...Permission[T]) error
+    Permit(...Permission[T]) bool
+    Revoke(...Permission[T]) error
     Permissions() []Permission[T]
     PermissionsMap() map[T]Permission[T]
     Get(id T) (Permission[T], bool)
@@ -94,9 +94,9 @@ type StdRole[T comparable] struct {
 #### Key Methods
 
 - `NewRole[T comparable](id T) *StdRole[T]` - Creates a new standard role
-- `Assign(p Permission[T]) error` - Assigns a permission to the role
-- `Permit(p Permission[T]) bool` - Checks if the role has a specific permission
-- `Revoke(p Permission[T]) error` - Revokes a permission from the role
+- `Assign(perms ...Permission[T]) error` - Assigns permissions to the role
+- `Permit(perms ...Permission[T]) bool` - Checks if the role has all specified permissions
+- `Revoke(perms ...Permission[T]) error` - Revokes permissions from the role
 - `Permissions() []Permission[T]` - Returns all permissions assigned to the role
 - `Get(id T) (Permission[T], bool)` - Looks up a permission by ID
 - `PermissionsMap() map[T]Permission[T]` - Returns a raw map of permissions keyed by ID
