@@ -71,7 +71,7 @@ func filterExprForRole[T comparable](
 	}
 	exprsByPermission := make(map[T][]string)
 	for _, role := range closure {
-		for _, perm := range role.FilterPermissionsMap() {
+		for _, perm := range role.FilterPermissions() {
 			f, ok := perm.(interface {
 				CEL() (string, error)
 			})

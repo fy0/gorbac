@@ -1,34 +1,44 @@
 package gorbac
 
-import (
-	"sync"
-)
+import "sync"
+
+// Role describes the role contract.
+type Role[T comparable] interface {
+	ID() T
+	Assign(Permission[T]) error
+	Permit(Permission[T]) bool
+	Revoke(Permission[T]) error
+	Permissions() []Permission[T]
+	PermissionsMap() map[T]Permission[T]
+	Get(id T) (Permission[T], bool)
+	FilterPermissions() map[T]Permission[T]
+}
 
 // Roles is a map
 type Roles[T comparable] map[T]Role[T]
 
-// NewStdRole is the default role factory function.
-// It matches the declaration to RoleFactoryFunc.
-func NewRole[T comparable](id T) Role[T] {
-	return Role[T]{
-		mutex:       new(sync.RWMutex),
-		ID:          id,
-		permissions: make(Permissions[T]),
+// NewRole is the default role factory function.
+func NewRole[T comparable](id T) *StdRole[T] {
+	return &StdRole[T]{
+		mutex:             new(sync.RWMutex),
+		IDValue:           id,
+		permissions:       make(Permissions[T]),
+		filterPermissions: make(map[T]Permission[T]),
 	}
 }
 
-// StdRole is the default role implement.
-// You can combine this struct into your own Role implement.
-// T is the type of ID
-type Role[T comparable] struct {
+// StdRole is the default role implementation.
+// You can embed this struct into your own role implementation.
+// T is the type of ID.
+type StdRole[T comparable] struct {
 	mutex *sync.RWMutex
 	// ID is the serialisable identity of role
-	ID                T `json:"id"`
+	IDValue           T `json:"id"`
 	permissions       Permissions[T]
 	filterPermissions map[T]Permission[T]
 }
 
-func (role *Role[T]) init() {
+func (role *StdRole[T]) init() {
 	if role.mutex == nil {
 		role.mutex = new(sync.RWMutex)
 	}
@@ -40,8 +50,13 @@ func (role *Role[T]) init() {
 	}
 }
 
+// ID returns the role ID.
+func (role *StdRole[T]) ID() T {
+	return role.IDValue
+}
+
 // Assign a permission to the role.
-func (role *Role[T]) Assign(p Permission[T]) error {
+func (role *StdRole[T]) Assign(p Permission[T]) error {
 	role.init()
 	role.mutex.Lock()
 	role.permissions[p.ID()] = p
@@ -57,7 +72,7 @@ func (role *Role[T]) Assign(p Permission[T]) error {
 }
 
 // Permit returns true if the role has specific permission.
-func (role *Role[T]) Permit(p Permission[T]) (ok bool) {
+func (role *StdRole[T]) Permit(p Permission[T]) (ok bool) {
 	var zero Permission[T]
 	if p == zero {
 		return false
@@ -86,7 +101,7 @@ func (role *Role[T]) Permit(p Permission[T]) (ok bool) {
 }
 
 // Revoke the specific permission.
-func (role *Role[T]) Revoke(p Permission[T]) error {
+func (role *StdRole[T]) Revoke(p Permission[T]) error {
 	role.init()
 	role.mutex.Lock()
 	delete(role.permissions, p.ID())
@@ -96,7 +111,7 @@ func (role *Role[T]) Revoke(p Permission[T]) error {
 }
 
 // Permissions returns all permissions into a slice.
-func (role *Role[T]) Permissions() []Permission[T] {
+func (role *StdRole[T]) Permissions() []Permission[T] {
 	role.init()
 	role.mutex.RLock()
 	result := make([]Permission[T], 0, len(role.permissions))
@@ -108,13 +123,13 @@ func (role *Role[T]) Permissions() []Permission[T] {
 }
 
 // PermissionsMap returns a raw ref of permissions keyed by ID.
-func (role *Role[T]) PermissionsMap() map[T]Permission[T] {
+func (role *StdRole[T]) PermissionsMap() map[T]Permission[T] {
 	role.init()
 	return role.permissions
 }
 
 // Get returns a permission by ID.
-func (role *Role[T]) Get(id T) (Permission[T], bool) {
+func (role *StdRole[T]) Get(id T) (Permission[T], bool) {
 	role.init()
 	role.mutex.RLock()
 	p, ok := role.permissions[id]
@@ -123,7 +138,7 @@ func (role *Role[T]) Get(id T) (Permission[T], bool) {
 }
 
 // FilterPermissions returns a raw ref of CEL-carrying permissions keyed by ID.
-func (role *Role[T]) FilterPermissionsMap() map[T]Permission[T] {
+func (role *StdRole[T]) FilterPermissions() map[T]Permission[T] {
 	role.init()
 	return role.filterPermissions
 }

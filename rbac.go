@@ -131,8 +131,8 @@ func (rbac *RBAC[T]) RemoveParent(id T, parent T) error {
 // Add a role `r`.
 func (rbac *RBAC[T]) Add(r Role[T]) (err error) {
 	rbac.mutex.Lock()
-	if _, ok := rbac.roles[r.ID]; !ok {
-		rbac.roles[r.ID] = r
+	if _, ok := rbac.roles[r.ID()]; !ok {
+		rbac.roles[r.ID()] = r
 	} else {
 		err = ErrRoleExist
 	}

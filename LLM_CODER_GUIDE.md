@@ -27,7 +27,7 @@ goRBAC is a lightweight role-based access control implementation in Golang. It p
 ```
 gorbac/
 ├── rbac.go              # Main RBAC implementation
-├── role.go              # Role struct and helpers
+├── role.go              # Role interface + StdRole helpers
 ├── permission.go        # Permission interface + StdPermission
 ├── filter_permission.go # Permission with attached CEL data-scope filter
 ├── filter_scope.go      # Helpers to build role-based SQL filters
@@ -69,12 +69,23 @@ All operations on the RBAC structure are thread-safe using read-write mutexes.
 
 ### 2. Role Implementation (`role.go`)
 
-The `Role[T]` struct is the default implementation:
+The `Role[T]` interface defines the contract, and `StdRole[T]` is the default implementation.
 
 ```go
-type Role[T comparable] struct {
+type Role[T comparable] interface {
+    ID() T
+    Assign(Permission[T]) error
+    Permit(Permission[T]) bool
+    Revoke(Permission[T]) error
+    Permissions() []Permission[T]
+    PermissionsMap() map[T]Permission[T]
+    Get(id T) (Permission[T], bool)
+    FilterPermissions() map[T]Permission[T]
+}
+
+type StdRole[T comparable] struct {
     mutex *sync.RWMutex
-    ID    T `json:"id"`
+    IDValue T `json:"id"`
     permissions Permissions[T]
     filterPermissions map[T]Permission[T]
 }
@@ -82,7 +93,7 @@ type Role[T comparable] struct {
 
 #### Key Methods
 
-- `NewRole[T comparable](id T) Role[T]` - Creates a new role
+- `NewRole[T comparable](id T) *StdRole[T]` - Creates a new standard role
 - `Assign(p Permission[T]) error` - Assigns a permission to the role
 - `Permit(p Permission[T]) bool` - Checks if the role has a specific permission
 - `Revoke(p Permission[T]) error` - Revokes a permission from the role
@@ -324,7 +335,7 @@ You can create custom roles by embedding the standard role:
 
 ```go
 type myRole struct {
-    gorbac.Role[string]  // Embed the standard role
+    gorbac.StdRole[string]  // Embed the standard role
     Label       string
     Description string
 }
@@ -413,7 +424,7 @@ if gorbac.AllGranted(rbac, roles, permission, nil) {
 
 ## Extending the Package
 
-1. Embed standard `Role[T]` struct for domain-specific role behavior
+1. Embed standard `StdRole[T]` struct for domain-specific role behavior
 2. Implement custom `Permission[T]` interfaces for complex permission matching logic
 3. Use the `Walk` function to export RBAC state for persistence
 4. Add middleware functions for logging or metrics around RBAC operations

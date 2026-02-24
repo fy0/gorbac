@@ -7,12 +7,12 @@ import (
 	"github.com/fy0/gorbac/v3"
 )
 
-// myRole is a custom role that embeds the standard gorbac.Role
+// myRole is a custom role that embeds the standard gorbac.StdRole
 // and adds additional fields
 type myRole struct {
-	gorbac.Role[string] // Embed the standard role
-	Label               string
-	Description         string
+	*gorbac.StdRole[string] // Embed the standard role
+	Label                   string
+	Description             string
 }
 
 // NewMyRole creates a new custom role with additional properties
@@ -20,7 +20,7 @@ func NewMyRole(name string) *myRole {
 	// loading extra properties by `name`.
 	label, desc := loadByName(name)
 	return &myRole{
-		Role:        gorbac.NewRole(name), // Create the standard role
+		StdRole:     gorbac.NewRole(name), // Create the standard role
 		Label:       label,
 		Description: desc,
 	}
@@ -38,20 +38,20 @@ func main() {
 	r3 := NewMyRole("role-3")
 	r4 := NewMyRole("role-4")
 
-	// Add roles to RBAC - we need to pass the embedded Role part
-	if err := rbac.Add(r1.Role); err != nil {
+	// Add roles to RBAC - we need to pass the embedded role
+	if err := rbac.Add(r1.StdRole); err != nil {
 		fmt.Printf("Error: %s", err)
 		return
 	}
-	if err := rbac.Add(r2.Role); err != nil {
+	if err := rbac.Add(r2.StdRole); err != nil {
 		fmt.Printf("Error: %s", err)
 		return
 	}
-	if err := rbac.Add(r3.Role); err != nil {
+	if err := rbac.Add(r3.StdRole); err != nil {
 		fmt.Printf("Error: %s", err)
 		return
 	}
-	if err := rbac.Add(r4.Role); err != nil {
+	if err := rbac.Add(r4.StdRole); err != nil {
 		fmt.Printf("Error: %s", err)
 		return
 	}
@@ -74,5 +74,5 @@ func main() {
 
 	// Note: In this simple example, we're not demonstrating access to the custom fields
 	// In a real application, you would maintain a separate map of custom roles
-	fmt.Printf("Role ID: %s\nParents: %v\n", role.ID, parents)
+	fmt.Printf("Role ID: %s\nParents: %v\n", role.ID(), parents)
 }

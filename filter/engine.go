@@ -132,7 +132,7 @@ func (p *Program) ConditionTree() Condition {
 // IsCondGranted evaluates the compiled condition tree against an object var map.
 func (p *Program) IsCondGranted(vars map[string]any, opts ...EvalOptions) (bool, error) {
 	if len(opts) > 1 {
-		return false, fmt.Errorf("IsGranted expects at most one EvalOptions argument")
+		return false, fmt.Errorf("IsCondGranted expects at most one EvalOptions argument")
 	}
 	var opt EvalOptions
 	if len(opts) == 1 {
@@ -177,7 +177,7 @@ func (e *Engine) Compile(filter string) (*Program, error) {
 	}, nil
 }
 
-// IsGranted executes the filter as a CEL program and expects a boolean outcome.
+// IsCondGranted executes the filter as a CEL program and expects a boolean outcome.
 //
 // The vars input is a `map[string]any` holding values for schema-defined fields.
 func (e *Engine) IsCondGranted(filter string, vars map[string]any) (bool, error) {

@@ -71,7 +71,7 @@ func TestWalk(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 	}
 	h := func(r Role[string], parents []string) error {
-		t.Logf("Role: %v", r.ID)
+		t.Logf("Role: %v", r.ID())
 		permissions := make([]string, 0)
 		for _, p := range r.Permissions() {
 			permissions = append(permissions, p.ID())

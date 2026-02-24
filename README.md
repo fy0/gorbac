@@ -25,6 +25,14 @@ Version
 
 The current version of goRBAC uses Go generics (Go 1.18+) and is under active development.
 
+About this fork
+===============
+
+This fork includes a few behavior/API adjustments:
+
+- `Role` is now an interface and the default implementation is `StdRole` (constructed via `NewRole`).
+- The data-scope filter helpers focus on composing CEL filters across roles; permission checks are expected to happen elsewhere.
+
 Install
 =======
 
@@ -203,7 +211,7 @@ Iterates through all roles in the RBAC instance:
 
 ```go
 handler := func(r gorbac.Role[string], parents []string) error {
-	fmt.Printf("Role: %s, Parents: %v\n", r.ID, parents)
+	fmt.Printf("Role: %s, Parents: %v\n", r.ID(), parents)
 	return nil
 }
 gorbac.Walk(rbac, handler)
@@ -247,4 +255,3 @@ Open Source - MIT Software License
 ==================================
 
 See LICENSE.
-

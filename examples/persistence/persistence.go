@@ -103,8 +103,8 @@ func main() {
 		for _, p := range r.Permissions() {
 			permissions = append(permissions, p.ID())
 		}
-		jsonOutputRoles[r.ID] = permissions
-		jsonOutputInher[r.ID] = parents
+		jsonOutputRoles[r.ID()] = permissions
+		jsonOutputInher[r.ID()] = parents
 		return nil
 	}
 	if err := gorbac.Walk(rbac, SaveJsonHandler); err != nil {

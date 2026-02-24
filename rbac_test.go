@@ -44,8 +44,8 @@ func TestRbacGetRemove(t *testing.T) {
 	assert(t, rbac.SetParent("role-a", "role-b"))
 	if r, parents, err := rbac.Get("role-a"); err != nil {
 		t.Fatal(err)
-	} else if r.ID != "role-a" {
-		t.Fatalf("[role-a] does not match %s", r.ID)
+	} else if r.ID() != "role-a" {
+		t.Fatalf("[role-a] does not match %s", r.ID())
 	} else if len(parents) != 1 {
 		t.Fatal("[role-a] should have one parent")
 	}
@@ -58,8 +58,8 @@ func TestRbacGetRemove(t *testing.T) {
 	}
 	if r, parents, err := rbac.Get("role-a"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
-	} else if r.ID != "" {
-		t.Fatal("The ID of a role should be empty")
+	} else if r != nil {
+		t.Fatal("The role should be nil when not found")
 	} else if parents != nil {
 		t.Fatal("The slice of parents should be a nil")
 	}
