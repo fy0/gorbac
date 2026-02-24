@@ -48,7 +48,7 @@ func testFilterSchema() filter.Schema {
 }
 
 func buildTestProgram(
-	rbac *RBAC[string],
+	rbac RBAC[string],
 	roles []string,
 	requiredFilterPermissions []Permission[string],
 	schema filter.Schema,

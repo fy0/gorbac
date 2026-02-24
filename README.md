@@ -31,6 +31,7 @@ About this fork
 This fork includes a few behavior/API adjustments:
 
 - `Role` is now an interface and the default implementation is `StdRole` (constructed via `NewRole`).
+- `RBAC` is now an interface and the default implementation is `StdRBAC` (constructed via `New`).
 - `Role.Assign`, `Role.Permit`, and `Role.Revoke` now accept variadic permissions for batch usage.
 - The data-scope filter helpers focus on composing CEL filters across roles; permission checks are expected to happen elsewhere.
 
@@ -137,7 +138,7 @@ Advanced Checking with Assertion Functions
 You can also use assertion functions for more fine-grained permission controls:
 
 ```go
-assertion := func(rbac *gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
+assertion := func(rbac gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
 	// Custom logic to determine if permission should be granted
 	return true // or false based on your logic
 }

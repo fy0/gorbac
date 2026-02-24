@@ -6,17 +6,14 @@ import "fmt"
 type WalkHandler[T comparable] func(Role[T], []T) error
 
 // Walk passes each Role to WalkHandler
-func Walk[T comparable](rbac *RBAC[T], h WalkHandler[T]) (err error) {
+func Walk[T comparable](rbac RBAC[T], h WalkHandler[T]) (err error) {
 	if h == nil {
 		return
 	}
-	rbac.mutex.Lock()
-	defer rbac.mutex.Unlock()
-	for id := range rbac.roles {
-		var parents []T
-		r := rbac.roles[id]
-		for parent := range rbac.parents[id] {
-			parents = append(parents, parent)
+	for _, id := range rbac.RoleIDs() {
+		r, parents, err := rbac.Get(id)
+		if err != nil {
+			return err
 		}
 		if err := h(r, parents); err != nil {
 			return err
@@ -26,18 +23,15 @@ func Walk[T comparable](rbac *RBAC[T], h WalkHandler[T]) (err error) {
 }
 
 // InherCircle returns an error when detecting any circle inheritance.
-func InherCircle[T comparable](rbac *RBAC[T]) (err error) {
-	rbac.mutex.Lock()
-
-	skipped := make(map[T]struct{}, len(rbac.roles))
+func InherCircle[T comparable](rbac RBAC[T]) (err error) {
+	skipped := make(map[T]struct{})
 	var stack []T
 
-	for id := range rbac.roles {
+	for _, id := range rbac.RoleIDs() {
 		if err = dfs(rbac, id, skipped, stack); err != nil {
 			break
 		}
 	}
-	rbac.mutex.Unlock()
 	return err
 }
 
@@ -46,7 +40,7 @@ var (
 )
 
 // https://en.wikipedia.org/wiki/Depth-first_search
-func dfs[T comparable](rbac *RBAC[T], id T, skipped map[T]struct{},
+func dfs[T comparable](rbac RBAC[T], id T, skipped map[T]struct{},
 	stack []T) error {
 	if _, ok := skipped[id]; ok {
 		return nil
@@ -56,13 +50,16 @@ func dfs[T comparable](rbac *RBAC[T], id T, skipped map[T]struct{},
 			return ErrFoundCircle
 		}
 	}
-	parents := rbac.parents[id]
+	parents, err := rbac.GetParents(id)
+	if err != nil {
+		return err
+	}
 	if len(parents) == 0 {
 		skipped[id] = empty
 		return nil
 	}
 	stack = append(stack, id)
-	for pid := range parents {
+	for _, pid := range parents {
 		if err := dfs(rbac, pid, skipped, stack); err != nil {
 			return err
 		}
@@ -71,30 +68,26 @@ func dfs[T comparable](rbac *RBAC[T], id T, skipped map[T]struct{},
 }
 
 // AnyGranted checks if any role has the permission.
-func AnyGranted[T comparable](rbac *RBAC[T], roles []T,
+func AnyGranted[T comparable](rbac RBAC[T], roles []T,
 	permission Permission[T], assert AssertionFunc[T]) (ok bool) {
-	rbac.mutex.Lock()
 	for _, role := range roles {
-		if rbac.isGranted(role, permission, assert) {
+		if rbac.IsGranted(role, permission, assert) {
 			ok = true
 			break
 		}
 	}
-	rbac.mutex.Unlock()
 	return
 }
 
 // AllGranted checks if all roles have the permission.
-func AllGranted[T comparable](rbac *RBAC[T], roles []T,
+func AllGranted[T comparable](rbac RBAC[T], roles []T,
 	permission Permission[T], assert AssertionFunc[T]) (ok bool) {
 	ok = true
-	rbac.mutex.Lock()
 	for _, role := range roles {
-		if !rbac.isGranted(role, permission, assert) {
+		if !rbac.IsGranted(role, permission, assert) {
 			ok = false
 			break
 		}
 	}
-	rbac.mutex.Unlock()
 	return
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/fy0/gorbac/v3/filter"
 )
 
-func collectRoleClosure[T comparable](rbac *RBAC[T], roleID T) ([]Role[T], bool) {
+func collectRoleClosure[T comparable](rbac RBAC[T], roleID T) ([]Role[T], bool) {
 	seen := make(map[T]struct{}, 8)
 	closure := make([]Role[T], 0, 8)
 	var dfs func(T)
@@ -38,7 +38,7 @@ func collectRoleClosure[T comparable](rbac *RBAC[T], roleID T) ([]Role[T], bool)
 // expressions to compose; missing filters are treated as allow-all. Permission
 // checks are expected to be handled separately.
 func FilterExprsForRoles[T comparable](
-	rbac *RBAC[T],
+	rbac RBAC[T],
 	roles []T,
 	requiredFilterPermissions []Permission[T],
 ) ([]string, error) {
@@ -61,7 +61,7 @@ func FilterExprsForRoles[T comparable](
 }
 
 func filterExprForRole[T comparable](
-	rbac *RBAC[T],
+	rbac RBAC[T],
 	roleID T,
 	requiredFilterPermissions []Permission[T],
 ) (string, bool, error) {

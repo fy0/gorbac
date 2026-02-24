@@ -49,14 +49,15 @@ gorbac/
 
 ### 1. RBAC Structure (`rbac.go`)
 
-The main RBAC structure manages roles and their inheritance relationships.
+The `RBAC[T]` interface defines the contract, and `StdRBAC[T]` is the default implementation.
 
 #### Key Methods
 
-- `New[T comparable]() *RBAC[T]` - Creates a new RBAC instance
+- `New[T comparable]() *StdRBAC[T]` - Creates a new RBAC instance (default implementation)
 - `Add(r Role[T]) error` - Adds a role to the RBAC instance
 - `Remove(id T) error` - Removes a role by ID
 - `Get(id T) (Role[T], []T, error)` - Gets a role and its parents
+- `RoleIDs() []T` - Returns all role IDs
 - `SetParent(id T, parent T) error` - Sets a parent for a role
 - `SetParents(id T, parents []T) error` - Sets multiple parents for a role
 - `GetParents(id T) ([]T, error)` - Gets all parents of a role
@@ -65,7 +66,7 @@ The main RBAC structure manages roles and their inheritance relationships.
 
 #### Thread Safety
 
-All operations on the RBAC structure are thread-safe using read-write mutexes.
+All operations on the default `StdRBAC` implementation are thread-safe using read-write mutexes.
 
 ### 2. Role Implementation (`role.go`)
 
@@ -133,16 +134,16 @@ Utility functions for common operations:
 
 #### Walk Function
 
-- `Walk[T comparable](rbac *RBAC[T], h WalkHandler[T]) error` - Iterates through all roles
+- `Walk[T comparable](rbac RBAC[T], h WalkHandler[T]) error` - Iterates through all roles
 
 #### Inheritance Validation
 
-- `InherCircle[T comparable](rbac *RBAC[T]) error` - Detects circular inheritance
+- `InherCircle[T comparable](rbac RBAC[T]) error` - Detects circular inheritance
 
 #### Permission Checking
 
-- `AnyGranted[T comparable](rbac *RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if any role has a permission
-- `AllGranted[T comparable](rbac *RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if all roles have a permission
+- `AnyGranted[T comparable](rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if any role has a permission
+- `AllGranted[T comparable](rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if all roles have a permission
 
 ## Usage Examples
 
@@ -201,9 +202,9 @@ rbacStruct := gorbac.New[RoleID]()
 You can provide custom assertion functions for fine-grained control:
 
 ```go
-assertFunc := func(r *gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
-    // Custom logic to determine if permission should be granted
-    return true // or false
+assertFunc := func(r gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
+	// Custom logic to determine if permission should be granted
+	return true // or false
 }
 
 if rbac.IsGranted("role-a", pA, assertFunc) {

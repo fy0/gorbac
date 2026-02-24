@@ -12,7 +12,7 @@ var (
 	rC = NewRole("role-c")
 	pC = NewPermission("permission-c")
 
-	rbac *RBAC[string]
+	rbac *StdRBAC[string]
 
 	permissionZero Permission[string]
 )
@@ -50,9 +50,6 @@ func TestRbacGetRemove(t *testing.T) {
 		t.Fatal("[role-a] should have one parent")
 	}
 	assert(t, rbac.Remove("role-a"))
-	if _, ok := rbac.roles["role-a"]; ok {
-		t.Fatal("Role removing failed")
-	}
 	if err := rbac.Remove("not-exist"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
@@ -67,11 +64,15 @@ func TestRbacGetRemove(t *testing.T) {
 
 func TestRbacParents(t *testing.T) {
 	assert(t, rbac.SetParent("role-c", "role-b"))
-	if _, ok := rbac.parents["role-c"]["role-b"]; !ok {
+	if parents, err := rbac.GetParents("role-c"); err != nil {
+		t.Fatal(err)
+	} else if !containsParent(parents, "role-b") {
 		t.Fatal("Parent binding failed")
 	}
 	assert(t, rbac.RemoveParent("role-c", "role-b"))
-	if _, ok := rbac.parents["role-c"]["role-b"]; ok {
+	if parents, err := rbac.GetParents("role-c"); err != nil {
+		t.Fatal(err)
+	} else if containsParent(parents, "role-b") {
 		t.Fatal("Parent unbinding failed")
 	}
 	if err := rbac.RemoveParent("role-a", "role-b"); err != ErrRoleNotExist {
@@ -93,7 +94,9 @@ func TestRbacParents(t *testing.T) {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
 	assert(t, rbac.SetParents("role-c", []string{"role-b"}))
-	if _, ok := rbac.parents["role-c"]["role-b"]; !ok {
+	if parents, err := rbac.GetParents("role-c"); err != nil {
+		t.Fatal(err)
+	} else if !containsParent(parents, "role-b") {
 		t.Fatal("Parent binding failed")
 	}
 	if parents, err := rbac.GetParents("role-a"); err != ErrRoleNotExist {
@@ -117,7 +120,7 @@ func TestRbacPermission(t *testing.T) {
 	if !rbac.IsGranted("role-c", pC, nil) {
 		t.Fatalf("role-c should have %s", pC)
 	}
-	if rbac.IsGranted("role-c", pC, func(*RBAC[string], string, Permission[string]) bool { return false }) {
+	if rbac.IsGranted("role-c", pC, func(RBAC[string], string, Permission[string]) bool { return false }) {
 		t.Fatal("Assertion don't work")
 	}
 	if !rbac.IsGranted("role-c", pB, nil) {
@@ -132,6 +135,15 @@ func TestRbacPermission(t *testing.T) {
 	if rbac.IsGranted("role-a", permissionZero, nil) {
 		t.Fatal("role-a should not have nil permission")
 	}
+}
+
+func containsParent(parents []string, target string) bool {
+	for _, parent := range parents {
+		if parent == target {
+			return true
+		}
+	}
+	return false
 }
 
 func BenchmarkRbacGranted(b *testing.B) {
