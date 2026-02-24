@@ -1,9 +1,8 @@
-package gorbac_test
+package gorbac
 
 import (
 	"testing"
 
-	"github.com/fy0/gorbac/v3"
 	"github.com/fy0/gorbac/v3/filter"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
@@ -48,25 +47,39 @@ func testFilterSchema() filter.Schema {
 	}
 }
 
-func TestNewFilterProgram_WithMacro(t *testing.T) {
-	rbac := gorbac.New[string]()
+func buildTestProgram(
+	rbac *RBAC[string],
+	roles []string,
+	requiredFilterPermissions []Permission[string],
+	schema filter.Schema,
+	opts ...filter.EngineOption,
+) (*filter.Program, error) {
+	exprs, err := FilterExprsForRoles(rbac, roles, requiredFilterPermissions)
+	if err != nil {
+		return nil, err
+	}
+	return NewFilterProgramFromCEL(schema, exprs, opts...)
+}
 
-	role1 := gorbac.NewRole("r1")
-	_ = role1.Assign(gorbac.NewFilterPermission("read", `selfUser()`))
+func TestNewFilterProgram_WithMacro(t *testing.T) {
+	rbac := New[string]()
+
+	role1 := NewRole("r1")
+	_ = role1.Assign(NewFilterPermission("read", `selfUser()`))
 	_ = rbac.Add(role1)
 
-	role2 := gorbac.NewRole("r2")
-	_ = role2.Assign(gorbac.NewFilterPermission("read", `visibility == "PUBLIC"`))
+	role2 := NewRole("r2")
+	_ = role2.Assign(NewFilterPermission("read", `visibility == "PUBLIC"`))
 	_ = rbac.Add(role2)
 
 	selfUser := cel.GlobalMacro("selfUser", 0, func(eh cel.MacroExprFactory, _ ast.Expr, _ []ast.Expr) (ast.Expr, *common.Error) {
 		return eh.NewCall(operators.Equals, eh.NewIdent("creator_id"), eh.NewIdent("current_user_id")), nil
 	})
 
-	program, err := gorbac.NewFilterProgram(
+	program, err := buildTestProgram(
 		rbac,
 		[]string{"r1", "r2"},
-		[]gorbac.Permission[string]{gorbac.NewPermission("read")},
+		[]Permission[string]{NewPermission("read")},
 		testFilterSchema(),
 		filter.WithMacros(selfUser),
 	)
@@ -89,18 +102,18 @@ func TestNewFilterProgram_WithMacro(t *testing.T) {
 }
 
 func TestNewFilterProgram_WithExtraFilterCEL_StdPermission(t *testing.T) {
-	rbac := gorbac.New[string]()
+	rbac := New[string]()
 
-	role := gorbac.NewRole("r1")
-	_ = role.Assign(gorbac.NewPermission("read"))
+	role := NewRole("r1")
+	_ = role.Assign(NewPermission("read"))
 	_ = rbac.Add(role)
 
-	program, err := gorbac.NewFilterProgram(
+	program, err := buildTestProgram(
 		rbac,
 		[]string{"r1"},
-		[]gorbac.Permission[string]{gorbac.NewPermission("read")},
+		[]Permission[string]{NewPermission("read")},
 		testFilterSchema(),
-		gorbac.WithExtraFilterCEL(`visibility == "PUBLIC"`),
+		filter.WithExtraFilterCEL(`visibility == "PUBLIC"`),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +132,7 @@ func TestNewFilterProgram_WithExtraFilterCEL_StdPermission(t *testing.T) {
 		t.Fatalf("unexpected args: %#v", stmt.Args)
 	}
 
-	allowed, err := program.IsGranted(map[string]any{"visibility": "PUBLIC"}, filter.EvalOptions{})
+	allowed, err := program.IsCondGranted(map[string]any{"visibility": "PUBLIC"}, filter.EvalOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,11 +140,67 @@ func TestNewFilterProgram_WithExtraFilterCEL_StdPermission(t *testing.T) {
 		t.Fatalf("expected PUBLIC to be allowed")
 	}
 
-	allowed, err = program.IsGranted(map[string]any{"visibility": "PRIVATE"}, filter.EvalOptions{})
+	allowed, err = program.IsCondGranted(map[string]any{"visibility": "PRIVATE"}, filter.EvalOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if allowed {
 		t.Fatalf("expected PRIVATE to be denied")
+	}
+}
+
+func TestFilterExprsForRoles(t *testing.T) {
+	rbac := New[string]()
+
+	role1 := NewRole("r1")
+	_ = role1.Assign(NewFilterPermission("read", `creator_id == current_user_id`))
+	_ = rbac.Add(role1)
+
+	role2 := NewRole("r2")
+	_ = role2.Assign(NewPermission("read"))
+	_ = rbac.Add(role2)
+
+	exprs, err := FilterExprsForRoles(
+		rbac,
+		[]string{"r1", "r2"},
+		[]Permission[string]{NewPermission("read")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exprs) != 2 {
+		t.Fatalf("expected 2 exprs, got %d", len(exprs))
+	}
+	wantExpr := `(creator_id == current_user_id)`
+	if exprs[0] != wantExpr {
+		t.Fatalf("unexpected expr.\nwant: %s\ngot:  %s", wantExpr, exprs[0])
+	}
+	if exprs[1] != "true" {
+		t.Fatalf("unexpected expr.\nwant: %s\ngot:  %s", "true", exprs[1])
+	}
+}
+
+func TestNewFilterProgramFromCEL(t *testing.T) {
+	exprs := []string{
+		`creator_id == current_user_id`,
+		`visibility == "PUBLIC"`,
+	}
+
+	program, err := NewFilterProgramFromCEL(testFilterSchema(), exprs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := program.RenderSQL(filter.Bindings{"current_user_id": int64(1)}, filter.RenderOptions{Dialect: filter.DialectPostgres})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantSQL := `(t.creator_id = $1 OR t.visibility = $2)`
+	if stmt.SQL != wantSQL {
+		t.Fatalf("unexpected SQL.\nwant: %s\ngot:  %s", wantSQL, stmt.SQL)
+	}
+	if len(stmt.Args) != 2 || stmt.Args[0] != int64(1) || stmt.Args[1] != "PUBLIC" {
+		t.Fatalf("unexpected args: %#v", stmt.Args)
 	}
 }

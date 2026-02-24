@@ -342,7 +342,7 @@ func TestEvaluate_ElementIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := prog.IsGranted(map[string]any{
+	ok, err := prog.IsCondGranted(map[string]any{
 		"tags": []string{"bar", "foo"},
 	}, filter.EvalOptions{})
 	if err != nil {
@@ -352,7 +352,7 @@ func TestEvaluate_ElementIn(t *testing.T) {
 		t.Fatalf("expected element membership to pass")
 	}
 
-	ok, err = prog.IsGranted(map[string]any{
+	ok, err = prog.IsCondGranted(map[string]any{
 		"tags": []string{"bar"},
 	}, filter.EvalOptions{})
 	if err != nil {
@@ -374,7 +374,7 @@ func TestEvaluate_ComprehensionExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := prog.IsGranted(map[string]any{
+	ok, err := prog.IsCondGranted(map[string]any{
 		"tags": []string{"alpha", "bravo"},
 		"q":    "pha",
 	}, filter.EvalOptions{})
@@ -385,7 +385,7 @@ func TestEvaluate_ComprehensionExists(t *testing.T) {
 		t.Fatalf("expected comprehension to pass")
 	}
 
-	ok, err = prog.IsGranted(map[string]any{
+	ok, err = prog.IsCondGranted(map[string]any{
 		"tags": []string{"alpha", "bravo"},
 		"q":    "zzz",
 	}, filter.EvalOptions{})
@@ -408,7 +408,7 @@ func TestEvaluate_ComprehensionStartsWith(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := prog.IsGranted(map[string]any{
+	ok, err := prog.IsCondGranted(map[string]any{
 		"tags": []string{"alpha", "bravo"},
 		"q":    "al",
 	}, filter.EvalOptions{})
@@ -419,7 +419,7 @@ func TestEvaluate_ComprehensionStartsWith(t *testing.T) {
 		t.Fatalf("expected startsWith comprehension to pass")
 	}
 
-	ok, err = prog.IsGranted(map[string]any{
+	ok, err = prog.IsCondGranted(map[string]any{
 		"tags": []string{"alpha", "bravo"},
 		"q":    "pha",
 	}, filter.EvalOptions{})
@@ -442,7 +442,7 @@ func TestEvaluate_ComprehensionEndsWith(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := prog.IsGranted(map[string]any{
+	ok, err := prog.IsCondGranted(map[string]any{
 		"tags": []string{"alpha", "bravo"},
 		"q":    "ha",
 	}, filter.EvalOptions{})
@@ -453,7 +453,7 @@ func TestEvaluate_ComprehensionEndsWith(t *testing.T) {
 		t.Fatalf("expected endsWith comprehension to pass")
 	}
 
-	ok, err = prog.IsGranted(map[string]any{
+	ok, err = prog.IsCondGranted(map[string]any{
 		"tags": []string{"alpha", "bravo"},
 		"q":    "al",
 	}, filter.EvalOptions{})
@@ -476,7 +476,7 @@ func TestEvaluate_TagAliasInList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := prog.IsGranted(map[string]any{
+	ok, err := prog.IsCondGranted(map[string]any{
 		"tags": []string{"foo/bar"},
 	}, filter.EvalOptions{})
 	if err != nil {
@@ -486,7 +486,7 @@ func TestEvaluate_TagAliasInList(t *testing.T) {
 		t.Fatalf("expected hierarchical tag alias to match foo/bar")
 	}
 
-	ok, err = prog.IsGranted(map[string]any{
+	ok, err = prog.IsCondGranted(map[string]any{
 		"tags": []string{"foobar"},
 	}, filter.EvalOptions{})
 	if err != nil {

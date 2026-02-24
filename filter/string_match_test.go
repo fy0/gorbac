@@ -206,7 +206,7 @@ func TestEvaluate_StringMatchFunctions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("compile %q: %v", tc.expr, err)
 		}
-		ok, err := prog.IsGranted(tc.vars, filter.EvalOptions{})
+		ok, err := prog.IsCondGranted(tc.vars, filter.EvalOptions{})
 		if err != nil {
 			t.Fatalf("eval %q: %v", tc.expr, err)
 		}

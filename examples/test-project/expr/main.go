@@ -79,10 +79,12 @@ func main() {
 
 	roleCreator := gorbac.NewRole("role-creator")
 	_ = roleCreator.Assign(gorbac.NewFilterPermission("project.read", `creator_id == current_user_id`))
+	// _ = roleCreator.Assign(gorbac.NewFilterPermission("project.read", `creator_id in [current_user_id, 1000]`))
 	_ = rbac.Add(roleCreator)
 
 	rolePublic := gorbac.NewRole("role-public")
 	_ = rolePublic.Assign(gorbac.NewFilterPermission("project.read", `visibility == "PUBLIC"`))
+	_ = rolePublic.Assign(gorbac.NewFilterPermission("project.read", `visibility in ["ARCHIVED", "PUBLIC"]`))
 	_ = rolePublic.Assign(gorbac.NewPermission("project.query"))
 	_ = rbac.Add(rolePublic)
 
@@ -96,7 +98,14 @@ func main() {
 
 	// 1) data scope from permissions (OR across roles) + optional user query (AND).
 	queryExpr := `query == "" || name.startsWith(query)`
-	scopeProgram, err := gorbac.NewFilterProgram(rbac, userRoles, required, schema, gorbac.WithExtraFilterCEL(queryExpr))
+
+	roleExprs, err := gorbac.FilterExprsForRoles(rbac, userRoles, required)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	scopeProgram, err := gorbac.NewFilterProgramFromCEL(schema, roleExprs, filter.WithExtraFilterCEL(queryExpr))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -131,7 +140,7 @@ func main() {
 		}
 		maps.Copy(vars, bindings)
 
-		allowed, err := scopeProgram.IsGranted(vars, filter.EvalOptions{})
+		allowed, err := scopeProgram.IsCondGranted(vars)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -23,8 +23,9 @@ func NewRole[T comparable](id T) Role[T] {
 type Role[T comparable] struct {
 	mutex *sync.RWMutex
 	// ID is the serialisable identity of role
-	ID          T `json:"id"`
-	permissions Permissions[T]
+	ID                T `json:"id"`
+	permissions       Permissions[T]
+	filterPermissions map[T]Permission[T]
 }
 
 func (role *Role[T]) init() {
@@ -34,6 +35,9 @@ func (role *Role[T]) init() {
 	if role.permissions == nil {
 		role.permissions = make(Permissions[T])
 	}
+	if role.filterPermissions == nil {
+		role.filterPermissions = make(map[T]Permission[T])
+	}
 }
 
 // Assign a permission to the role.
@@ -41,6 +45,13 @@ func (role *Role[T]) Assign(p Permission[T]) error {
 	role.init()
 	role.mutex.Lock()
 	role.permissions[p.ID()] = p
+	if _, ok := p.(interface {
+		CEL() (string, error)
+	}); ok {
+		role.filterPermissions[p.ID()] = p
+	} else {
+		delete(role.filterPermissions, p.ID())
+	}
 	role.mutex.Unlock()
 	return nil
 }
@@ -79,6 +90,7 @@ func (role *Role[T]) Revoke(p Permission[T]) error {
 	role.init()
 	role.mutex.Lock()
 	delete(role.permissions, p.ID())
+	delete(role.filterPermissions, p.ID())
 	role.mutex.Unlock()
 	return nil
 }
@@ -93,4 +105,25 @@ func (role *Role[T]) Permissions() []Permission[T] {
 	}
 	role.mutex.RUnlock()
 	return result
+}
+
+// PermissionsMap returns a raw ref of permissions keyed by ID.
+func (role *Role[T]) PermissionsMap() map[T]Permission[T] {
+	role.init()
+	return role.permissions
+}
+
+// Get returns a permission by ID.
+func (role *Role[T]) Get(id T) (Permission[T], bool) {
+	role.init()
+	role.mutex.RLock()
+	p, ok := role.permissions[id]
+	role.mutex.RUnlock()
+	return p, ok
+}
+
+// FilterPermissions returns a raw ref of CEL-carrying permissions keyed by ID.
+func (role *Role[T]) FilterPermissionsMap() map[T]Permission[T] {
+	role.init()
+	return role.filterPermissions
 }

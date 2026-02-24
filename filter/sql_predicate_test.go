@@ -99,7 +99,7 @@ func TestSQLPredicateCondition_AllDialects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ok, err := prog.IsGranted(map[string]any{
+	ok, err := prog.IsCondGranted(map[string]any{
 		"creator_id":      int64(123),
 		"current_user_id": int64(123),
 	}, filter.EvalOptions{})

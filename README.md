@@ -144,11 +144,14 @@ Conditional Filters (Data Scope)
 This repo also includes an optional CEL -> SQL filter engine for row-level data scoping:
 
 - `github.com/fy0/gorbac/v3/filter`: a CEL -> SQL filter engine (ported from `memos`).
-- Helpers in package `gorbac` to attach per-permission CEL filters (`FilterPermission`) and combine them across roles (`NewFilterProgram`).
-- Optional: AND an extra CEL filter via `gorbac.WithExtraFilterCEL(...)` (useful for user query/search filters).
+- Helpers in package `gorbac` to attach per-permission CEL filters (`FilterPermission`) and combine them across roles (`FilterExprsForRoles`, `NewFilterProgramFromCEL`).
+- Optional: AND an extra CEL filter via `filter.WithExtraFilterCEL(...)` (useful for user query/search filters).
 
 At a high level, permissions still decide whether a role is granted, and the attached
-filter decides which rows are accessible for that permission.
+filter decides which rows are accessible for that permission. `FilterExprsForRoles`
+does not perform permission checks; it only selects which filter expressions to
+compose based on the required filter permission IDs. Missing filters are treated
+as allow-all.
 
 The filter engine supports (subset):
 
@@ -157,65 +160,6 @@ The filter engine supports (subset):
 - JSON string lists with membership + comprehensions (`FieldKindJSONList`, e.g. `"foo" in tags`, `tags.exists(t, t.contains(q))`, `t.startsWith(q)`)
 - Extension hooks: register custom CEL macros/env options (`filter.WithEnvOptions`, `filter.WithMacros`) and rewrite the compiled condition tree (`filter.WithCompileHook`)
 - Custom predicates: register dialect-aware SQL snippets and reference them from CEL via `sql("name", [...])` (`filter.WithSQLPredicate`)
-
-Example (union scope for roles that can `read`):
-
-```go
-import (
-	"github.com/google/cel-go/cel"
-	"github.com/fy0/gorbac/v3"
-	"github.com/fy0/gorbac/v3/filter"
-)
-
-schema := filter.Schema{
-	Name: "example",
-	Fields: map[string]*filter.Field{
-		"creator_id":  &filter.Field{Name: "creator_id", Type: filter.FieldTypeInt, Column: filter.Column{Table: "t", Name: "creator_id"}},
-		"visibility":  &filter.Field{Name: "visibility", Type: filter.FieldTypeString, Column: filter.Column{Table: "t", Name: "visibility"}},
-	},
-	EnvOptions: []cel.EnvOption{
-		cel.Variable("creator_id", cel.IntType),
-		cel.Variable("visibility", cel.StringType),
-		cel.Variable("current_user_id", cel.IntType),
-	},
-}
-
-rbac := gorbac.New[string]()
-
-r1 := gorbac.NewRole("role-creator")
-_ = r1.Assign(gorbac.NewFilterPermission("read", `creator_id == current_user_id`))
-_ = rbac.Add(r1)
-
-r2 := gorbac.NewRole("role-public")
-_ = r2.Assign(gorbac.NewFilterPermission("read", `visibility == "PUBLIC"`))
-_ = rbac.Add(r2)
-
-program, err := gorbac.NewFilterProgram(
-	rbac,
-	[]string{"role-creator", "role-public"},
-	[]gorbac.Permission[string]{gorbac.NewPermission("read")},
-	schema,
-	// Optional: AND with an extra CEL filter.
-	// gorbac.WithExtraFilterCEL(`q == "" || name.contains(q)`),
-	// Optional: filter.WithMacros(...), filter.WithCompileHook(...), filter.WithSQLPredicate(...)
-)
-if err != nil {
-	panic(err)
-}
-
-stmt, err := program.RenderSQL(filter.Bindings{"current_user_id": int64(123)}, filter.RenderOptions{
-	Dialect: filter.DialectPostgres,
-	// Optional when embedding the fragment into queries that use different aliases:
-	// TableAliases: map[string]string{"t": "p"}, // renders "p.creator_id" instead of "t.creator_id"
-	// OmitTableQualifier: true,               // renders "creator_id" instead of "t.creator_id"
-})
-if err != nil {
-	panic(err)
-}
-
-// stmt.SQL  -> "(t.creator_id = $1 OR t.visibility = $2)"
-// stmt.Args -> [123, "PUBLIC"]
-```
 
 Tip: if your schema matches a Go struct, you can build it via `filter.SchemaFromStruct(...)`.
 

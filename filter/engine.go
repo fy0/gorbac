@@ -19,6 +19,7 @@ type engineConfig struct {
 	envOptions    []cel.EnvOption
 	compileHook   []CompileHook
 	sqlPredicates map[string]SQLPredicate
+	extraFilter   string
 }
 
 // EngineOption customizes Engine construction.
@@ -52,6 +53,24 @@ func WithCompileHook(hook CompileHook) EngineOption {
 	}
 }
 
+// WithExtraFilterCEL registers an extra CEL boolean expression on the Engine.
+//
+// This is consumed by `gorbac.NewFilterProgramFromCEL(...)` to AND an additional filter
+// (e.g. a user query/search expression) onto the permission-derived scope.
+func WithExtraFilterCEL(expr string) EngineOption {
+	return func(cfg *engineConfig) {
+		expr = strings.TrimSpace(expr)
+		if expr == "" {
+			return
+		}
+		if cfg.extraFilter == "" {
+			cfg.extraFilter = expr
+			return
+		}
+		cfg.extraFilter = fmt.Sprintf("(%s) && (%s)", cfg.extraFilter, expr)
+	}
+}
+
 // Engine parses CEL filters into a dialect-agnostic condition tree.
 type Engine struct {
 	schema Schema
@@ -59,6 +78,7 @@ type Engine struct {
 
 	compileHooks  []CompileHook
 	sqlPredicates map[string]SQLPredicate
+	extraFilter   string
 }
 
 // NewEngine builds a new Engine for the provided schema.
@@ -87,7 +107,15 @@ func NewEngine(schema Schema, opts ...EngineOption) (*Engine, error) {
 		env:           env,
 		compileHooks:  cfg.compileHook,
 		sqlPredicates: cfg.sqlPredicates,
+		extraFilter:   cfg.extraFilter,
 	}, nil
+}
+
+// ExtraFilterCEL returns the Engine's configured extra CEL filter expression.
+//
+// When unset, it returns an empty string.
+func (e *Engine) ExtraFilterCEL() string {
+	return e.extraFilter
 }
 
 // Program stores a compiled filter condition.
@@ -101,9 +129,16 @@ func (p *Program) ConditionTree() Condition {
 	return p.condition
 }
 
-// IsGranted evaluates the compiled condition tree against an object var map.
-func (p *Program) IsGranted(vars map[string]any, opts EvalOptions) (bool, error) {
-	return EvaluateCondition(p.schema, p.condition, vars, opts)
+// IsCondGranted evaluates the compiled condition tree against an object var map.
+func (p *Program) IsCondGranted(vars map[string]any, opts ...EvalOptions) (bool, error) {
+	if len(opts) > 1 {
+		return false, fmt.Errorf("IsGranted expects at most one EvalOptions argument")
+	}
+	var opt EvalOptions
+	if len(opts) == 1 {
+		opt = opts[0]
+	}
+	return EvaluateCondition(p.schema, p.condition, vars, opt)
 }
 
 // Compile parses the filter string into an executable program.
@@ -145,12 +180,12 @@ func (e *Engine) Compile(filter string) (*Program, error) {
 // IsGranted executes the filter as a CEL program and expects a boolean outcome.
 //
 // The vars input is a `map[string]any` holding values for schema-defined fields.
-func (e *Engine) IsGranted(filter string, vars map[string]any) (bool, error) {
+func (e *Engine) IsCondGranted(filter string, vars map[string]any) (bool, error) {
 	program, err := e.Compile(filter)
 	if err != nil {
 		return false, err
 	}
-	return program.IsGranted(vars, EvalOptions{})
+	return program.IsCondGranted(vars, EvalOptions{})
 }
 
 // CompileToStatement compiles and renders the filter in a single step.

@@ -40,7 +40,6 @@ gorbac/
 ├── filter/              # CEL -> IR -> SQL filter engine (ported from memos)
 ├── examples/            # Complete example applications
 │   ├── persistence/     # Example showing data persistence
-│   ├── test-project/    # Data-scope examples (scope + raw expr)
 │   └── user-defined/    # Example with custom role implementation
 ├── README.md            # Project documentation
 └── go.mod               # Go module definition
@@ -77,6 +76,7 @@ type Role[T comparable] struct {
     mutex *sync.RWMutex
     ID    T `json:"id"`
     permissions Permissions[T]
+    filterPermissions map[T]Permission[T]
 }
 ```
 
@@ -87,6 +87,11 @@ type Role[T comparable] struct {
 - `Permit(p Permission[T]) bool` - Checks if the role has a specific permission
 - `Revoke(p Permission[T]) error` - Revokes a permission from the role
 - `Permissions() []Permission[T]` - Returns all permissions assigned to the role
+- `Get(id T) (Permission[T], bool)` - Looks up a permission by ID
+- `PermissionsMap() map[T]Permission[T]` - Returns a raw map of permissions keyed by ID
+- `FilterPermissions() map[T]Permission[T]` - Returns a raw map of CEL-carrying permissions keyed by ID
+
+`PermissionsMap()` and `FilterPermissions()` return raw references. Do not mutate them directly; use `Assign`/`Revoke` to keep internal caches consistent.
 
 ### 3. Permission Interface and Implementation (`permission.go`)
 
@@ -201,7 +206,7 @@ In addition to “permission granted” checks, this repo includes a CEL-based d
 
 - `FilterPermission[T]` (`filter_permission.go`): a permission with an attached CEL expression (string) used for row-level filtering.
 - `filter` package (`filter/`): compiles CEL boolean expressions into a dialect-agnostic condition tree, which can be rendered as SQL (SQLite/MySQL/Postgres) or evaluated in-memory.
-- `filter_scope.go`: glue helpers to build a single SQL fragment across all user roles (OR across roles, AND across required permissions).
+- `filter_scope.go`: glue helpers to build a single SQL fragment across all user roles (OR across roles, AND across required filter permissions).
 
 ### Concepts
 
@@ -209,7 +214,7 @@ In addition to “permission granted” checks, this repo includes a CEL-based d
 2. **Engine (`filter.NewEngine`)**: parses + type-checks CEL with `cel-go`, then converts CEL AST to a small intermediate representation (IR).
 3. **Program**: holds the compiled IR (`ConditionTree()`), supports:
    - `RenderSQL(bindings, opts)` -> `(Statement, error)`
-   - `IsGranted(vars, opts)` -> `(bool, error)` (in-memory counterpart)
+   - `IsCondGranted(vars, opts)` -> `(bool, error)` (in-memory counterpart)
 
 ### SQL Output: placeholders + args
 
@@ -286,11 +291,12 @@ Notes:
 
 ### Role-based helpers (`filter_scope.go`)
 
-- `NewFilterProgram(...)` -> `*filter.Program` (OR across roles, AND across required permissions)
-- Optional: `gorbac.WithExtraFilterCEL(...)` to AND an additional CEL filter (e.g. user query/search) onto the permission scope.
+- `FilterExprsForRoles(...)` -> `[]string` (CEL expressions composed from required filter permission IDs; missing filters are treated as allow-all)
+- `NewFilterProgramFromCEL(...)` -> `*filter.Program` (OR across role expressions; AND across required filter permissions happens in `FilterExprsForRoles`)
+- Optional: `filter.WithExtraFilterCEL(...)` to AND an additional CEL filter (e.g. user query/search) onto the permission scope.
 - The returned program can be used with:
   - `program.RenderSQL(bindings, opts)` -> `(filter.Statement, error)`
-  - `program.IsGranted(vars, opts)` -> `(bool, error)`
+  - `program.IsCondGranted(vars, opts)` -> `(bool, error)`
 
 ## Persistence
 
@@ -365,7 +371,7 @@ See the `*_test.go` files for detailed usage examples.
 | RBAC Core | `rbac.go` | `New`, `Add`, `Remove`, `IsGranted`, `SetParent` |
 | Roles | `role.go` | `NewRole`, `Assign`, `Permit`, `Revoke` |
 | Permissions | `permission.go` | `NewPermission`, `Match` |
-| Data Scope | `filter_scope.go` | `NewFilterProgram` |
+| Data Scope | `filter_scope.go` | `FilterExprsForRoles`, `NewFilterProgramFromCEL` |
 | Filter Engine | `filter/` | `NewEngine`, `SchemaFromStruct`, `WithMacros`, `WithSQLPredicate` |
 | Utilities | `helper.go` | `Walk`, `InherCircle`, `AnyGranted`, `AllGranted` |
 | Examples | `example_test.go` | Complete usage examples |

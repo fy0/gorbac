@@ -7,173 +7,107 @@ import (
 	"github.com/fy0/gorbac/v3/filter"
 )
 
-type filterProgramConfig struct {
-	extraFilterCEL string
-}
-
-// FilterProgramOption customizes NewFilterProgram behavior.
-//
-// Options can be provided to NewFilterProgram alongside filter.EngineOption values.
-type FilterProgramOption func(*filterProgramConfig)
-
-// WithExtraFilterCEL adds an extra CEL boolean expression that is AND-ed with the
-// permission-derived scope.
-//
-// This is useful for attaching user query filters (e.g. `q == "" || name.contains(q)`)
-// without having to compile and compose multiple statements manually.
-func WithExtraFilterCEL(expr string) FilterProgramOption {
-	return func(cfg *filterProgramConfig) {
-		expr = strings.TrimSpace(expr)
-		if expr == "" {
+func collectRoleClosure[T comparable](rbac *RBAC[T], roleID T) ([]Role[T], bool) {
+	seen := make(map[T]struct{}, 8)
+	closure := make([]Role[T], 0, 8)
+	var dfs func(T)
+	dfs = func(id T) {
+		if _, ok := seen[id]; ok {
 			return
 		}
-		if cfg.extraFilterCEL == "" {
-			cfg.extraFilterCEL = expr
+		role, parents, err := rbac.Get(id)
+		if err != nil {
 			return
 		}
-		cfg.extraFilterCEL = fmt.Sprintf("(%s) && (%s)", cfg.extraFilterCEL, expr)
+		seen[id] = struct{}{}
+		closure = append(closure, role)
+		for _, parentID := range parents {
+			dfs(parentID)
+		}
 	}
-}
-
-type permissionClosureCache[T comparable] struct {
-	rbac *RBAC[T]
-
-	// roleClosure caches role IDs reachable from a role (self + parents), de-duped.
-	//
-	// This avoids repeatedly walking the inheritance graph and prevents duplicated
-	// work/variants when multiple parents share ancestors.
-	roleClosure map[T][]T
-
-	// directPermissions caches only the permissions directly assigned to a role.
-	directPermissions map[T][]Permission[T]
-
-	// allPermissions caches all permissions a role has (direct + inherited).
-	allPermissions map[T][]Permission[T]
-}
-
-func newPermissionClosureCache[T comparable](rbac *RBAC[T]) *permissionClosureCache[T] {
-	return &permissionClosureCache[T]{
-		rbac:              rbac,
-		roleClosure:       make(map[T][]T),
-		directPermissions: make(map[T][]Permission[T]),
-		allPermissions:    make(map[T][]Permission[T]),
-	}
-}
-
-func (c *permissionClosureCache[T]) permissions(roleID T) []Permission[T] {
-	if perms, ok := c.allPermissions[roleID]; ok {
-		return perms
-	}
-
-	// Use a per-call stack guard to tolerate cyclic inheritance.
-	visiting := make(map[T]struct{}, 8)
-	closure, _ := c.roleClosureInternal(roleID, visiting)
+	dfs(roleID)
 	if len(closure) == 0 {
-		c.allPermissions[roleID] = nil
-		return nil
-	}
-
-	merged := make([]Permission[T], 0, 8)
-	for _, id := range closure {
-		merged = append(merged, c.directPermissions[id]...)
-	}
-	c.allPermissions[roleID] = merged
-	return merged
-}
-
-func (c *permissionClosureCache[T]) roleClosureInternal(roleID T, visiting map[T]struct{}) ([]T, bool) {
-	if closure, ok := c.roleClosure[roleID]; ok {
-		return closure, true
-	}
-
-	// Cycles are treated as "already visited", similar to the previous
-	// collectMatchingPermissions() implementation.
-	if _, ok := visiting[roleID]; ok {
-		return nil, true
-	}
-	visiting[roleID] = struct{}{}
-	defer delete(visiting, roleID)
-
-	role, parents, err := c.rbac.Get(roleID)
-	if err != nil {
-		// Keep legacy behavior: missing role IDs behave like "no permissions".
-		c.roleClosure[roleID] = nil
-		c.directPermissions[roleID] = nil
 		return nil, false
 	}
-
-	c.directPermissions[roleID] = role.Permissions()
-
-	closure := make([]T, 0, 1+len(parents))
-	closure = append(closure, roleID)
-	seen := map[T]struct{}{roleID: {}}
-	for _, parentID := range parents {
-		parentClosure, _ := c.roleClosureInternal(parentID, visiting)
-		for _, id := range parentClosure {
-			if _, ok := seen[id]; ok {
-				continue
-			}
-			seen[id] = struct{}{}
-			closure = append(closure, id)
-		}
-	}
-
-	c.roleClosure[roleID] = closure
 	return closure, true
 }
 
-func matchPermissions[T comparable](all []Permission[T], requested Permission[T]) []Permission[T] {
-	if len(all) == 0 {
-		return nil
-	}
-	matching := make([]Permission[T], 0, 4)
-	for _, assigned := range all {
-		if assigned.Match(requested) {
-			matching = append(matching, assigned)
-		}
-	}
-	return matching
-}
-
-// NewFilterProgram builds a single filter.Program that represents the union of
-// all accessible rows across the provided roles.
+// FilterExprsForRoles returns combined CEL expressions per role.
 //
-// Semantics:
-//   - Filter within a role: AND across `permissions`
-//   - Multiple matches for one permission (e.g. inherited): OR
-//   - Across roles: OR
-//
-// Optional args can include:
-//   - `filter.EngineOption` values (forwarded to `filter.NewEngine`)
-//   - `FilterProgramOption` values (e.g. `WithExtraFilterCEL(...)`)
-//
-// The returned program can be:
-//   - rendered into SQL via `program.RenderSQL(bindings, opts)`
-//   - evaluated in-memory via `program.IsGranted(vars, opts)`
-func NewFilterProgram[T comparable](
+// The required filter permissions are used only to select which filter
+// expressions to compose; missing filters are treated as allow-all. Permission
+// checks are expected to be handled separately.
+func FilterExprsForRoles[T comparable](
 	rbac *RBAC[T],
 	roles []T,
-	permissions []Permission[T],
-	schema filter.Schema,
-	opts ...any,
-) (*filter.Program, error) {
-	if len(permissions) == 0 {
-		return nil, fmt.Errorf("permissions is empty")
+	requiredFilterPermissions []Permission[T],
+) ([]string, error) {
+	if len(requiredFilterPermissions) == 0 {
+		return nil, fmt.Errorf("required filter permissions is empty")
 	}
 
-	cfg := &filterProgramConfig{}
-	engineOpts := make([]filter.EngineOption, 0, len(opts))
-	for _, opt := range opts {
-		switch v := opt.(type) {
-		case nil:
-			continue
-		case filter.EngineOption:
-			engineOpts = append(engineOpts, v)
-		case FilterProgramOption:
-			v(cfg)
-		default:
-			return nil, fmt.Errorf("unsupported NewFilterProgram option %T", opt)
+	exprs := make([]string, 0, len(roles))
+	for _, roleID := range roles {
+		expr, ok, err := filterExprForRole(rbac, roleID, requiredFilterPermissions)
+		if err != nil {
+			return nil, err
 		}
+		if !ok {
+			continue
+		}
+		exprs = append(exprs, expr)
+	}
+	return exprs, nil
+}
+
+func filterExprForRole[T comparable](
+	rbac *RBAC[T],
+	roleID T,
+	requiredFilterPermissions []Permission[T],
+) (string, bool, error) {
+	closure, ok := collectRoleClosure(rbac, roleID)
+	if !ok {
+		return "", false, nil
+	}
+	exprsByPermission := make(map[T][]string)
+	for _, role := range closure {
+		for _, perm := range role.FilterPermissionsMap() {
+			f, ok := perm.(interface {
+				CEL() (string, error)
+			})
+			if !ok {
+				continue
+			}
+			expr, err := f.CEL()
+			if err != nil {
+				return "", false, err
+			}
+			normalized, err := normalizeExpr(expr)
+			if err != nil {
+				return "", false, err
+			}
+			exprsByPermission[perm.ID()] = append(exprsByPermission[perm.ID()], normalized)
+		}
+	}
+	expr, err := buildSingleRoleExpr(exprsByPermission, requiredFilterPermissions)
+	if err != nil {
+		return "", false, err
+	}
+	return expr, true, nil
+}
+
+// NewFilterProgramFromCEL compiles CEL expressions into a single filter.Program.
+//
+// Expressions are OR-ed together. Optional `filter.EngineOption` values are
+// forwarded to `filter.NewEngine`, including `filter.WithExtraFilterCEL(...)`
+// which is AND-ed to the final condition.
+func NewFilterProgramFromCEL(
+	schema filter.Schema,
+	exprs []string,
+	engineOpts ...filter.EngineOption,
+) (*filter.Program, error) {
+	if len(exprs) == 0 {
+		return filter.NewProgramFromCondition(schema, &filter.ConstantCondition{Value: false}), nil
 	}
 
 	engine, err := filter.NewEngine(schema, engineOpts...)
@@ -181,172 +115,129 @@ func NewFilterProgram[T comparable](
 		return nil, err
 	}
 
-	var extraCond filter.Condition
-	if strings.TrimSpace(cfg.extraFilterCEL) != "" {
-		extraProg, err := engine.Compile(cfg.extraFilterCEL)
+	roleConds := make([]filter.Condition, 0, len(exprs))
+	for i, rawExpr := range exprs {
+		expr, err := normalizeExpr(rawExpr)
+		if err != nil {
+			return nil, fmt.Errorf("expr %d: %w", i, err)
+		}
+		program, err := engine.Compile(expr)
+		if err != nil {
+			return nil, fmt.Errorf("expr %d: %w", i, err)
+		}
+		roleConds = append(roleConds, program.ConditionTree())
+	}
+
+	cond := filter.CondOr(roleConds...)
+
+	if extra := strings.TrimSpace(engine.ExtraFilterCEL()); extra != "" {
+		extraProg, err := engine.Compile(extra)
 		if err != nil {
 			return nil, err
 		}
-		extraCond = extraProg.ConditionTree()
+		cond = filter.CondAnd(cond, extraProg.ConditionTree())
 	}
 
-	cache := newPermissionClosureCache(rbac)
-
-	roleConds := make([]filter.Condition, 0, len(roles))
-	for _, roleID := range roles {
-		rolePerms := cache.permissions(roleID)
-		roleCond, ok, err := buildSingleRoleCondition(engine, rolePerms, permissions)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			continue
-		}
-		roleConds = append(roleConds, roleCond)
-	}
-
-	if len(roleConds) == 0 {
-		return filter.NewProgramFromCondition(schema, &filter.ConstantCondition{Value: false}), nil
-	}
-	cond := orAll(roleConds)
-	if extraCond != nil {
-		cond = andAll([]filter.Condition{cond, extraCond})
-	}
 	return filter.NewProgramFromCondition(schema, cond), nil
 }
 
-func buildSingleRoleCondition[T comparable](
-	engine *filter.Engine,
-	rolePermissions []Permission[T],
-	permissions []Permission[T],
-) (filter.Condition, bool, error) {
-	buckets := bucketPermissionsByMatchKind(rolePermissions)
-
-	permConds := make([]filter.Condition, 0, len(permissions))
-	for _, permission := range permissions {
-		matching := buckets.match(permission)
-		if len(matching) == 0 {
-			return nil, false, nil
-		}
-
-		variants, err := collectPermissionVariantConditions(engine, matching)
-		if err != nil {
-			return nil, false, err
-		}
-		permConds = append(permConds, orAll(variants))
-	}
-
-	return andAll(permConds), true, nil
-}
-
-type permissionBuckets[T comparable] struct {
-	exactByID map[T][]Permission[T]
-	nonExact  []Permission[T]
-}
-
-func bucketPermissionsByMatchKind[T comparable](all []Permission[T]) permissionBuckets[T] {
-	if len(all) == 0 {
-		return permissionBuckets[T]{exactByID: make(map[T][]Permission[T])}
-	}
-
-	buckets := permissionBuckets[T]{
-		exactByID: make(map[T][]Permission[T], len(all)),
-		nonExact:  make([]Permission[T], 0, len(all)),
-	}
-	for _, p := range all {
-		if isExactMatchOnlyPermission(p) {
-			id := p.ID()
-			buckets.exactByID[id] = append(buckets.exactByID[id], p)
+func buildSingleRoleExpr[T comparable](
+	exprsByPermission map[T][]string,
+	requiredFilterPermissions []Permission[T],
+) (string, error) {
+	permExprs := make([]string, 0, len(requiredFilterPermissions))
+	for _, permission := range requiredFilterPermissions {
+		variants := exprsByPermission[permission.ID()]
+		if len(variants) == 0 {
+			permExprs = append(permExprs, "true")
 			continue
 		}
-		buckets.nonExact = append(buckets.nonExact, p)
+		permExprs = append(permExprs, orAllExprs(variants))
 	}
-	return buckets
+
+	return andAllExprs(permExprs), nil
 }
 
-func isExactMatchOnlyPermission[T comparable](p Permission[T]) bool {
-	switch p.(type) {
-	case StdPermission[T], *StdPermission[T]:
-		return true
-	case FilterPermission[T], *FilterPermission[T]:
-		return true
-	default:
+type combineRules struct {
+	identity    string
+	annihilator string
+	joiner      string
+}
+
+func combineExprs(exprs []string, rules combineRules) string {
+	if len(exprs) == 0 {
+		return rules.identity
+	}
+	out := make([]string, 0, len(exprs))
+	for _, expr := range exprs {
+		expr = strings.TrimSpace(expr)
+		if expr == "" || expr == rules.identity {
+			continue
+		}
+		if expr == rules.annihilator {
+			return rules.annihilator
+		}
+		out = append(out, wrapExpr(expr))
+	}
+	if len(out) == 0 {
+		return rules.identity
+	}
+	if len(out) == 1 {
+		return out[0]
+	}
+	return strings.Join(out, rules.joiner)
+}
+
+func andAllExprs(exprs []string) string {
+	return combineExprs(exprs, combineRules{
+		identity:    "true",
+		annihilator: "false",
+		joiner:      " && ",
+	})
+}
+
+func orAllExprs(exprs []string) string {
+	return combineExprs(exprs, combineRules{
+		identity:    "false",
+		annihilator: "true",
+		joiner:      " || ",
+	})
+}
+
+func wrapExpr(expr string) string {
+	expr = strings.TrimSpace(expr)
+	if expr == "" || expr == "true" || expr == "false" {
+		return expr
+	}
+	if isWrappedExpr(expr) {
+		return expr
+	}
+	return fmt.Sprintf("(%s)", expr)
+}
+
+func isWrappedExpr(expr string) bool {
+	if !strings.HasPrefix(expr, "(") || !strings.HasSuffix(expr, ")") {
 		return false
 	}
-}
-
-func (b permissionBuckets[T]) match(requested Permission[T]) []Permission[T] {
-	matching := make([]Permission[T], 0, 4)
-
-	if b.exactByID != nil {
-		if perms := b.exactByID[requested.ID()]; len(perms) != 0 {
-			matching = append(matching, perms...)
-		}
-	}
-
-	for _, assigned := range b.nonExact {
-		if assigned.Match(requested) {
-			matching = append(matching, assigned)
-		}
-	}
-
-	return matching
-}
-
-func collectPermissionVariantConditions[T comparable](
-	engine *filter.Engine,
-	matching []Permission[T],
-) ([]filter.Condition, error) {
-	variants := make([]filter.Condition, 0, len(matching))
-	for _, assigned := range matching {
-		if f, ok := assigned.(interface {
-			CEL() (string, error)
-		}); ok {
-			expr, err := f.CEL()
-			if err != nil {
-				return nil, err
+	depth := 0
+	for i, r := range expr {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && i != len(expr)-1 {
+				return false
 			}
-			program, err := engine.Compile(expr)
-			if err != nil {
-				return nil, err
-			}
-			variants = append(variants, program.ConditionTree())
-			continue
 		}
-
-		// Permissions without attached filters are treated as allow-all.
-		variants = append(variants, &filter.ConstantCondition{Value: true})
 	}
-
-	return variants, nil
+	return depth == 0
 }
 
-func andAll(conds []filter.Condition) filter.Condition {
-	if len(conds) == 0 {
-		return &filter.ConstantCondition{Value: true}
+func normalizeExpr(expr string) (string, error) {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return "", fmt.Errorf("filter expression is empty")
 	}
-	out := conds[0]
-	for i := 1; i < len(conds); i++ {
-		out = &filter.LogicalCondition{
-			Operator: filter.LogicalAnd,
-			Left:     out,
-			Right:    conds[i],
-		}
-	}
-	return out
-}
-
-func orAll(conds []filter.Condition) filter.Condition {
-	if len(conds) == 0 {
-		return &filter.ConstantCondition{Value: false}
-	}
-	out := conds[0]
-	for i := 1; i < len(conds); i++ {
-		out = &filter.LogicalCondition{
-			Operator: filter.LogicalOr,
-			Left:     out,
-			Right:    conds[i],
-		}
-	}
-	return out
+	return expr, nil
 }
