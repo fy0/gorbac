@@ -34,6 +34,11 @@ This fork includes a few behavior/API adjustments:
 - `RBAC` is now an interface and the default implementation is `StdRBAC` (constructed via `New`).
 - RBAC/Role APIs use `context.Context` as the first parameter, aligned with modern Go practices.
 - `Role.Assign`, `Role.Permit`, and `Role.Revoke` now accept variadic permissions for batch usage.
+- `RBAC.Get` now returns only `Role`; use `RBAC.GetParents` when parent IDs are needed.
+- `RBAC.SetParent` has been removed; use `RBAC.SetParents(ctx, id, parentID)` instead.
+- `RBAC.SetParents` now accepts variadic parent IDs (`parents ...T`).
+- `RBAC.RemoveParents` now accepts variadic parent IDs (`parents ...T`).
+- `AnyGranted` and `AllGranted` now accept variadic permissions for batch checks.
 - The data-scope filter helpers focus on composing CEL filters across roles; permission checks are expected to happen elsewhere.
 
 Install
@@ -119,9 +124,9 @@ rbac.Add(ctx, rE)
 And set the inheritance:
 
 ```go
-rbac.SetParent(ctx, "role-a", "role-b")
-rbac.SetParents(ctx, "role-b", []string{"role-c", "role-d"})
-rbac.SetParent(ctx, "role-e", "role-d")
+rbac.SetParents(ctx, "role-a", "role-b")
+rbac.SetParents(ctx, "role-b", "role-c", "role-d")
+rbac.SetParents(ctx, "role-e", "role-d")
 ```
 
 Checking
@@ -130,27 +135,11 @@ Checking
 Checking the permission is easy:
 
 ```go
-if rbac.IsGranted(ctx, "role-a", pA, nil) &&
-	rbac.IsGranted(ctx, "role-a", pB, nil) &&
-	rbac.IsGranted(ctx, "role-a", pC, nil) &&
-	rbac.IsGranted(ctx, "role-a", pD, nil) {
+if rbac.IsGranted(ctx, "role-a", pA) &&
+	rbac.IsGranted(ctx, "role-a", pB) &&
+	rbac.IsGranted(ctx, "role-a", pC) &&
+	rbac.IsGranted(ctx, "role-a", pD) {
 	fmt.Println("The role-a has been granted permis-a, b, c and d.")
-}
-```
-
-Advanced Checking with Assertion Functions
-------------------------------------------
-
-You can also use assertion functions for more fine-grained permission controls:
-
-```go
-assertion := func(ctx context.Context, rbac gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
-	// Custom logic to determine if permission should be granted
-	return true // or false based on your logic
-}
-
-if rbac.IsGranted(ctx, "role-a", pA, assertion) {
-	fmt.Println("The role-a has been granted permission-a based on the assertion.")
 }
 ```
 
@@ -188,29 +177,29 @@ goRBAC provides several built-in utility functions:
 Detects circular inheritance in the role hierarchy:
 
 ```go
-rbac.SetParent(ctx, "role-c", "role-a")
+rbac.SetParents(ctx, "role-c", "role-a")
 if err := gorbac.InherCircle(ctx, rbac); err != nil {
 	fmt.Println("A circle inheritance occurred.")
 }
 ```
 
 ### AnyGranted
-Checks if any of the specified roles have a permission:
+Checks if the role set grants any of the required permissions:
 
 ```go
 roles := []string{"role-a", "role-b", "role-c"}
-if gorbac.AnyGranted(ctx, rbac, roles, pA, nil) {
-	fmt.Println("At least one role has permission-a.")
+if gorbac.AnyGranted(ctx, rbac, roles, pA, pB) {
+	fmt.Println("The role set grants at least one of permission-a or permission-b.")
 }
 ```
 
 ### AllGranted
-Checks if all of the specified roles have a permission:
+Checks if the role set grants all required permissions:
 
 ```go
 roles := []string{"role-a", "role-b", "role-c"}
-if gorbac.AllGranted(ctx, rbac, roles, pA, nil) {
-	fmt.Println("All roles have permission-a.")
+if gorbac.AllGranted(ctx, rbac, roles, pA, pB) {
+	fmt.Println("The role set covers both permission-a and permission-b.")
 }
 ```
 

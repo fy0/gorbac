@@ -23,9 +23,9 @@ func TestPrepareCircle(t *testing.T) {
 	assert(t, rbac.Add(ctx, rA))
 	assert(t, rbac.Add(ctx, rB))
 	assert(t, rbac.Add(ctx, rC))
-	assert(t, rbac.SetParent(ctx, "role-a", "role-b"))
-	assert(t, rbac.SetParent(ctx, "role-b", "role-c"))
-	assert(t, rbac.SetParent(ctx, "role-c", "role-a"))
+	assert(t, rbac.SetParents(ctx, "role-a", "role-b"))
+	assert(t, rbac.SetParents(ctx, "role-b", "role-c"))
+	assert(t, rbac.SetParents(ctx, "role-c", "role-a"))
 }
 
 func TestInherCircle(t *testing.T) {
@@ -39,7 +39,7 @@ func TestInherCircle(t *testing.T) {
 
 func TestInherNormal(t *testing.T) {
 	ctx := context.Background()
-	assert(t, rbac.RemoveParent(ctx, "role-c", "role-a"))
+	assert(t, rbac.RemoveParents(ctx, "role-c", "role-a"))
 	if err := InherCircle(ctx, rbac); err != nil {
 		t.Fatal(err)
 	}
@@ -47,14 +47,22 @@ func TestInherNormal(t *testing.T) {
 
 func TestAllGranted(t *testing.T) {
 	ctx := context.Background()
-	// All roles have pAll
+	// Union of all roles grants pAll, pA, pB, pC
 	roles := []string{"role-a", "role-b", "role-c"}
-	if !AllGranted(ctx, rbac, roles, pAll, nil) {
-		t.Errorf("All roles(%v) were expected having %s, but they weren't.", roles, pAll)
+	if !AllGranted(ctx, rbac, roles, pAll) {
+		t.Errorf("Role union (%v) was expected covering %s, but it didn't.", roles, pAll)
 	}
 
-	if AllGranted(ctx, rbac, roles, pA, nil) {
-		t.Errorf("Not all roles(%v) were expected having %s, but they were.", roles, pA)
+	if !AllGranted(ctx, rbac, roles, pA, pB, pC) {
+		t.Errorf("Role union (%v) was expected covering %s,%s,%s, but it didn't.", roles, pA, pB, pC)
+	}
+
+	if AllGranted(ctx, rbac, roles, pA, pNone) {
+		t.Errorf("Role union (%v) should not cover both %s and %s, but it did.", roles, pA, pNone)
+	}
+
+	if AllGranted(ctx, rbac, []string{"role-c"}, pA) {
+		t.Errorf("Single role role-c should not cover %s, but it did.", pA)
 	}
 }
 
@@ -62,12 +70,20 @@ func TestAnyGranted(t *testing.T) {
 	ctx := context.Background()
 	// rA roles have pA
 	roles := []string{"role-a", "role-b", "role-c"}
-	if !AnyGranted(ctx, rbac, roles, pA, nil) {
+	if !AnyGranted(ctx, rbac, roles, pA) {
 		t.Errorf("One of roles(%v) was expected having %s, but it wasn't.", roles, pA)
 	}
 
-	if AnyGranted(ctx, rbac, roles, pNone, nil) {
+	if AnyGranted(ctx, rbac, roles, pNone) {
 		t.Errorf("None of roles(%v) were expected having %s, but it was.", roles, pNone)
+	}
+
+	if !AnyGranted(ctx, rbac, roles, pA, pNone) {
+		t.Errorf("Role union (%v) was expected covering at least one of %s or %s, but it didn't.", roles, pA, pNone)
+	}
+
+	if AnyGranted(ctx, rbac, []string{"role-c"}, pA, pB) {
+		t.Errorf("Role-c should not cover any of %s or %s, but it did.", pA, pB)
 	}
 
 }
@@ -110,13 +126,13 @@ func BenchmarkInherCircle(b *testing.B) {
 	if err := rbac.Add(ctx, rC); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.SetParent(ctx, "role-a", "role-b"); err != nil {
+	if err := rbac.SetParents(ctx, "role-a", "role-b"); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.SetParent(ctx, "role-b", "role-c"); err != nil {
+	if err := rbac.SetParents(ctx, "role-b", "role-c"); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.SetParent(ctx, "role-c", "role-a"); err != nil {
+	if err := rbac.SetParents(ctx, "role-c", "role-a"); err != nil {
 		b.Fatal(err)
 	}
 	if err := InherCircle(ctx, rbac); err == nil {
@@ -139,10 +155,10 @@ func BenchmarkInherNormal(b *testing.B) {
 	if err := rbac.Add(ctx, rC); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.SetParent(ctx, "role-a", "role-b"); err != nil {
+	if err := rbac.SetParents(ctx, "role-a", "role-b"); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.SetParent(ctx, "role-b", "role-c"); err != nil {
+	if err := rbac.SetParents(ctx, "role-b", "role-c"); err != nil {
 		b.Fatal(err)
 	}
 	if err := InherCircle(ctx, rbac); err != nil {

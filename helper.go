@@ -14,7 +14,11 @@ func Walk[T comparable](ctx context.Context, rbac RBAC[T], h WalkHandler[T]) (er
 		return
 	}
 	for _, id := range rbac.RoleIDs(ctx) {
-		r, parents, err := rbac.Get(ctx, id)
+		r, err := rbac.Get(ctx, id)
+		if err != nil {
+			return err
+		}
+		parents, err := rbac.GetParents(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -70,27 +74,39 @@ func dfs[T comparable](ctx context.Context, rbac RBAC[T], id T, skipped map[T]st
 	return nil
 }
 
-// AnyGranted checks if any role has the permission.
+// AnyGranted checks whether the role set grants any specified permission.
 func AnyGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T,
-	permission Permission[T], assert AssertionFunc[T]) (ok bool) {
-	for _, role := range roles {
-		if rbac.IsGranted(ctx, role, permission, assert) {
-			ok = true
-			break
+	permissions ...Permission[T]) (ok bool) {
+	if len(roles) == 0 || len(permissions) == 0 {
+		return false
+	}
+	for _, permission := range permissions {
+		for _, role := range roles {
+			if rbac.IsGranted(ctx, role, permission) {
+				return true
+			}
 		}
 	}
-	return
+	return false
 }
 
-// AllGranted checks if all roles have the permission.
+// AllGranted checks whether the role set grants all specified permissions.
 func AllGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T,
-	permission Permission[T], assert AssertionFunc[T]) (ok bool) {
-	ok = true
-	for _, role := range roles {
-		if !rbac.IsGranted(ctx, role, permission, assert) {
-			ok = false
-			break
+	permissions ...Permission[T]) (ok bool) {
+	if len(roles) == 0 || len(permissions) == 0 {
+		return false
+	}
+	for _, permission := range permissions {
+		granted := false
+		for _, role := range roles {
+			if rbac.IsGranted(ctx, role, permission) {
+				granted = true
+				break
+			}
+		}
+		if !granted {
+			return false
 		}
 	}
-	return
+	return true
 }

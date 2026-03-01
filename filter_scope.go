@@ -16,7 +16,11 @@ func collectRoleClosure[T comparable](ctx context.Context, rbac RBAC[T], roleID 
 		if _, ok := seen[id]; ok {
 			return
 		}
-		role, parents, err := rbac.Get(ctx, id)
+		role, err := rbac.Get(ctx, id)
+		if err != nil {
+			return
+		}
+		parents, err := rbac.GetParents(ctx, id)
 		if err != nil {
 			return
 		}

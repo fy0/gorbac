@@ -58,17 +58,22 @@ func main() {
 		return
 	}
 
-	if err := rbac.SetParents(ctx, "role-1", []string{"role-2", "role-3"}); err != nil {
+	if err := rbac.SetParents(ctx, "role-1", "role-2", "role-3"); err != nil {
 		fmt.Printf("Error: %s", err)
 		return
 	}
 
-	if err := rbac.SetParent(ctx, "role-3", "role-4"); err != nil {
+	if err := rbac.SetParents(ctx, "role-3", "role-4"); err != nil {
 		fmt.Printf("Error: %s", err)
 		return
 	}
 
-	role, parents, err := rbac.Get(ctx, "role-1")
+	role, err := rbac.Get(ctx, "role-1")
+	if err != nil {
+		fmt.Printf("Error: %s", err)
+		return
+	}
+	parents, err := rbac.GetParents(ctx, "role-1")
 	if err != nil {
 		fmt.Printf("Error: %s", err)
 		return

@@ -49,23 +49,23 @@ func ExampleRBAC_string() {
 	must(rbac.Add(ctx, rC))
 	must(rbac.Add(ctx, rD))
 	must(rbac.Add(ctx, rE))
-	must(rbac.SetParent(ctx, "role-a", "role-b"))
-	must(rbac.SetParents(ctx, "role-b", []string{"role-c", "role-d"}))
-	must(rbac.SetParent(ctx, "role-e", "role-d"))
+	must(rbac.SetParents(ctx, "role-a", "role-b"))
+	must(rbac.SetParents(ctx, "role-b", "role-c", "role-d"))
+	must(rbac.SetParents(ctx, "role-e", "role-d"))
 
-	if rbac.IsGranted(ctx, "role-a", pA, nil) &&
-		rbac.IsGranted(ctx, "role-a", pB, nil) &&
-		rbac.IsGranted(ctx, "role-a", pC, nil) &&
-		rbac.IsGranted(ctx, "role-a", pD, nil) {
+	if rbac.IsGranted(ctx, "role-a", pA) &&
+		rbac.IsGranted(ctx, "role-a", pB) &&
+		rbac.IsGranted(ctx, "role-a", pC) &&
+		rbac.IsGranted(ctx, "role-a", pD) {
 		fmt.Println("The role-a has been granted permis-a, b, c and d.")
 	}
-	if rbac.IsGranted(ctx, "role-b", pB, nil) &&
-		rbac.IsGranted(ctx, "role-b", pC, nil) &&
-		rbac.IsGranted(ctx, "role-b", pD, nil) {
+	if rbac.IsGranted(ctx, "role-b", pB) &&
+		rbac.IsGranted(ctx, "role-b", pC) &&
+		rbac.IsGranted(ctx, "role-b", pD) {
 		fmt.Println("The role-b has been granted permis-b, c and d.")
 	}
 	// When a circle inheratance occurred,
-	must(rbac.SetParent(ctx, "role-c", "role-a"))
+	must(rbac.SetParents(ctx, "role-c", "role-a"))
 	// it could be detected as following code:
 	if err := gorbac.InherCircle(ctx, rbac); err != nil {
 		fmt.Println("A circle inheratance occurred.")
@@ -108,23 +108,23 @@ func ExampleRBAC_int() {
 	must(rbac.Add(ctx, rC))
 	must(rbac.Add(ctx, rD))
 	must(rbac.Add(ctx, rE))
-	must(rbac.SetParent(ctx, 1, 2))
-	must(rbac.SetParents(ctx, 2, []int{3, 4}))
-	must(rbac.SetParent(ctx, 5, 4))
+	must(rbac.SetParents(ctx, 1, 2))
+	must(rbac.SetParents(ctx, 2, 3, 4))
+	must(rbac.SetParents(ctx, 5, 4))
 
-	if rbac.IsGranted(ctx, 1, pA, nil) &&
-		rbac.IsGranted(ctx, 1, pB, nil) &&
-		rbac.IsGranted(ctx, 1, pC, nil) &&
-		rbac.IsGranted(ctx, 1, pD, nil) {
+	if rbac.IsGranted(ctx, 1, pA) &&
+		rbac.IsGranted(ctx, 1, pB) &&
+		rbac.IsGranted(ctx, 1, pC) &&
+		rbac.IsGranted(ctx, 1, pD) {
 		fmt.Println("The role-a has been granted permis-a, b, c and d.")
 	}
-	if rbac.IsGranted(ctx, 2, pB, nil) &&
-		rbac.IsGranted(ctx, 2, pC, nil) &&
-		rbac.IsGranted(ctx, 2, pD, nil) {
+	if rbac.IsGranted(ctx, 2, pB) &&
+		rbac.IsGranted(ctx, 2, pC) &&
+		rbac.IsGranted(ctx, 2, pD) {
 		fmt.Println("The role-b has been granted permis-b, c and d.")
 	}
 	// When a circle inheratance occurred,
-	must(rbac.SetParent(ctx, 3, 1))
+	must(rbac.SetParents(ctx, 3, 1))
 	// it could be detected as following code:
 	if err := gorbac.InherCircle(ctx, rbac); err != nil {
 		fmt.Println("A circle inheratance occurred.")

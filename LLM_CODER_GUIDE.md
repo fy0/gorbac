@@ -56,13 +56,12 @@ The `RBAC[T]` interface defines the contract, and `StdRBAC[T]` is the default im
 - `New[T comparable]() *StdRBAC[T]` - Creates a new RBAC instance (default implementation)
 - `Add(ctx context.Context, r Role[T]) error` - Adds a role to the RBAC instance
 - `Remove(ctx context.Context, id T) error` - Removes a role by ID
-- `Get(ctx context.Context, id T) (Role[T], []T, error)` - Gets a role and its parents
+- `Get(ctx context.Context, id T) (Role[T], error)` - Gets a role
 - `RoleIDs(ctx context.Context) []T` - Returns all role IDs
-- `SetParent(ctx context.Context, id T, parent T) error` - Sets a parent for a role
-- `SetParents(ctx context.Context, id T, parents []T) error` - Sets multiple parents for a role
+- `SetParents(ctx context.Context, id T, parents ...T) error` - Sets one or more parents for a role
 - `GetParents(ctx context.Context, id T) ([]T, error)` - Gets all parents of a role
-- `RemoveParent(ctx context.Context, id T, parent T) error` - Removes a parent from a role
-- `IsGranted(ctx context.Context, id T, p Permission[T], assert AssertionFunc[T]) bool` - Checks if a role has a permission
+- `RemoveParents(ctx context.Context, id T, parents ...T) error` - Removes one or more parents from a role
+- `IsGranted(ctx context.Context, id T, p Permission[T]) bool` - Checks if a role has a permission
 
 #### Thread Safety
 
@@ -142,8 +141,8 @@ Utility functions for common operations:
 
 #### Permission Checking
 
-- `AnyGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if any role has a permission
-- `AllGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if all roles have a permission
+- `AnyGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T, permissions ...Permission[T]) bool` - Checks if the role set grants any specified permission
+- `AllGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T, permissions ...Permission[T]) bool` - Checks if the role set grants all specified permissions
 
 ## Usage Examples
 
@@ -172,10 +171,10 @@ rbac.Add(ctx, rA)
 rbac.Add(ctx, rB)
 
 // Set inheritance
-rbac.SetParent(ctx, "role-a", "role-b")
+rbac.SetParents(ctx, "role-a", "role-b")
 
 // Check permissions
-if rbac.IsGranted(ctx, "role-a", pA, nil) {
+if rbac.IsGranted(ctx, "role-a", pA) {
     // role-a has permission-a
 }
 ```
@@ -197,21 +196,6 @@ type RoleID struct {
     Type string
 }
 rbacStruct := gorbac.New[RoleID]()
-```
-
-### Custom Assertion Functions
-
-You can provide custom assertion functions for fine-grained control:
-
-```go
-assertFunc := func(ctx context.Context, r gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
-	// Custom logic to determine if permission should be granted
-	return true // or false
-}
-
-if rbac.IsGranted(ctx, "role-a", pA, assertFunc) {
-    // Permission granted based on custom logic
-}
 ```
 
 ## Conditional Filters (Data Scope)
@@ -382,7 +366,7 @@ See the `*_test.go` files for detailed usage examples.
 
 | Component | File | Key Functions |
 |-----------|------|---------------|
-| RBAC Core | `rbac.go` | `New`, `Add`, `Remove`, `IsGranted`, `SetParent` |
+| RBAC Core | `rbac.go` | `New`, `Add`, `Remove`, `IsGranted`, `SetParents` |
 | Roles | `role.go` | `NewRole`, `Assign`, `Permit`, `Revoke` |
 | Permissions | `permission.go` | `NewPermission`, `Match` |
 | Data Scope | `filter_scope.go` | `FilterExprsForRoles`, `NewFilterProgramFromCEL` |
@@ -405,7 +389,7 @@ rbac := gorbac.New[string]()
 ### 2. Permission Checking Pattern
 
 ```go
-if rbac.IsGranted(ctx, "user-role", requiredPermission, nil) {
+if rbac.IsGranted(ctx, "user-role", requiredPermission) {
     // Allow access
 } else {
     // Deny access
@@ -416,12 +400,12 @@ if rbac.IsGranted(ctx, "user-role", requiredPermission, nil) {
 
 ```go
 roles := []string{"role1", "role2", "role3"}
-if gorbac.AnyGranted(ctx, rbac, roles, permission, nil) {
-    // At least one role has the permission
+if gorbac.AnyGranted(ctx, rbac, roles, permissionA, permissionB) {
+    // Role set grants at least one required permission
 }
 
-if gorbac.AllGranted(ctx, rbac, roles, permission, nil) {
-    // All roles have the permission
+if gorbac.AllGranted(ctx, rbac, roles, permissionA, permissionB) {
+    // Role set covers all required permissions
 }
 ```
 
@@ -433,3 +417,4 @@ if gorbac.AllGranted(ctx, rbac, roles, permission, nil) {
 4. Add middleware functions for logging or metrics around RBAC operations
 
 This guide provides a comprehensive overview of the goRBAC package. For implementation details, refer to the source files in the package structure.
+

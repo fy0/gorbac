@@ -62,25 +62,25 @@ func main() {
 	}
 	// Assign the inheritance relationship
 	for rid, parents := range jsonInher {
-		if err := rbac.SetParents(ctx, rid, parents); err != nil {
+		if err := rbac.SetParents(ctx, rid, parents...); err != nil {
 			log.Fatal(err)
 		}
 	}
 	// Check if `editor` can add text
-	if rbac.IsGranted(ctx, "editor", permissions["add-text"], nil) {
+	if rbac.IsGranted(ctx, "editor", permissions["add-text"]) {
 		log.Println("Editor can add text")
 	}
 	// Check if `chief-editor` can add text
-	if rbac.IsGranted(ctx, "chief-editor", permissions["add-text"], nil) {
+	if rbac.IsGranted(ctx, "chief-editor", permissions["add-text"]) {
 		log.Println("Chief editor can add text")
 	}
 	// Check if `photographer` can add text
-	if !rbac.IsGranted(ctx, "photographer", permissions["add-text"], nil) {
+	if !rbac.IsGranted(ctx, "photographer", permissions["add-text"]) {
 		log.Println("Photographer can't add text")
 	}
 	// Check if `nobody` can add text
 	// `nobody` is not exist in goRBAC at the moment
-	if !rbac.IsGranted(ctx, "nobody", permissions["read-text"], nil) {
+	if !rbac.IsGranted(ctx, "nobody", permissions["read-text"]) {
 		log.Println("Nobody can't read text")
 	}
 	// Add `nobody` and assign `read-text` permission
@@ -89,7 +89,7 @@ func main() {
 	nobody.Assign(ctx, permissions["read-text"])
 	rbac.Add(ctx, nobody)
 	// Check if `nobody` can read text again
-	if rbac.IsGranted(ctx, "nobody", permissions["read-text"], nil) {
+	if rbac.IsGranted(ctx, "nobody", permissions["read-text"]) {
 		log.Println("Nobody can read text")
 	}
 
