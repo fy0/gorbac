@@ -1,13 +1,14 @@
 package gorbac
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/fy0/gorbac/v3/filter"
 )
 
-func collectRoleClosure[T comparable](rbac RBAC[T], roleID T) ([]Role[T], bool) {
+func collectRoleClosure[T comparable](ctx context.Context, rbac RBAC[T], roleID T) ([]Role[T], bool) {
 	seen := make(map[T]struct{}, 8)
 	closure := make([]Role[T], 0, 8)
 	var dfs func(T)
@@ -15,7 +16,7 @@ func collectRoleClosure[T comparable](rbac RBAC[T], roleID T) ([]Role[T], bool) 
 		if _, ok := seen[id]; ok {
 			return
 		}
-		role, parents, err := rbac.Get(id)
+		role, parents, err := rbac.Get(ctx, id)
 		if err != nil {
 			return
 		}
@@ -38,6 +39,7 @@ func collectRoleClosure[T comparable](rbac RBAC[T], roleID T) ([]Role[T], bool) 
 // expressions to compose; missing filters are treated as allow-all. Permission
 // checks are expected to be handled separately.
 func FilterExprsForRoles[T comparable](
+	ctx context.Context,
 	rbac RBAC[T],
 	roles []T,
 	requiredFilterPermissions []Permission[T],
@@ -48,7 +50,7 @@ func FilterExprsForRoles[T comparable](
 
 	exprs := make([]string, 0, len(roles))
 	for _, roleID := range roles {
-		expr, ok, err := filterExprForRole(rbac, roleID, requiredFilterPermissions)
+		expr, ok, err := filterExprForRole(ctx, rbac, roleID, requiredFilterPermissions)
 		if err != nil {
 			return nil, err
 		}
@@ -61,17 +63,18 @@ func FilterExprsForRoles[T comparable](
 }
 
 func filterExprForRole[T comparable](
+	ctx context.Context,
 	rbac RBAC[T],
 	roleID T,
 	requiredFilterPermissions []Permission[T],
 ) (string, bool, error) {
-	closure, ok := collectRoleClosure(rbac, roleID)
+	closure, ok := collectRoleClosure(ctx, rbac, roleID)
 	if !ok {
 		return "", false, nil
 	}
 	exprsByPermission := make(map[T][]string)
 	for _, role := range closure {
-		for _, perm := range role.FilterPermissions() {
+		for _, perm := range role.FilterPermissions(ctx) {
 			f, ok := perm.(interface {
 				CEL() (string, error)
 			})

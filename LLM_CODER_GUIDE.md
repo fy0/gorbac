@@ -54,15 +54,15 @@ The `RBAC[T]` interface defines the contract, and `StdRBAC[T]` is the default im
 #### Key Methods
 
 - `New[T comparable]() *StdRBAC[T]` - Creates a new RBAC instance (default implementation)
-- `Add(r Role[T]) error` - Adds a role to the RBAC instance
-- `Remove(id T) error` - Removes a role by ID
-- `Get(id T) (Role[T], []T, error)` - Gets a role and its parents
-- `RoleIDs() []T` - Returns all role IDs
-- `SetParent(id T, parent T) error` - Sets a parent for a role
-- `SetParents(id T, parents []T) error` - Sets multiple parents for a role
-- `GetParents(id T) ([]T, error)` - Gets all parents of a role
-- `RemoveParent(id T, parent T) error` - Removes a parent from a role
-- `IsGranted(id T, p Permission[T], assert AssertionFunc[T]) bool` - Checks if a role has a permission
+- `Add(ctx context.Context, r Role[T]) error` - Adds a role to the RBAC instance
+- `Remove(ctx context.Context, id T) error` - Removes a role by ID
+- `Get(ctx context.Context, id T) (Role[T], []T, error)` - Gets a role and its parents
+- `RoleIDs(ctx context.Context) []T` - Returns all role IDs
+- `SetParent(ctx context.Context, id T, parent T) error` - Sets a parent for a role
+- `SetParents(ctx context.Context, id T, parents []T) error` - Sets multiple parents for a role
+- `GetParents(ctx context.Context, id T) ([]T, error)` - Gets all parents of a role
+- `RemoveParent(ctx context.Context, id T, parent T) error` - Removes a parent from a role
+- `IsGranted(ctx context.Context, id T, p Permission[T], assert AssertionFunc[T]) bool` - Checks if a role has a permission
 
 #### Thread Safety
 
@@ -75,13 +75,13 @@ The `Role[T]` interface defines the contract, and `StdRole[T]` is the default im
 ```go
 type Role[T comparable] interface {
     ID() T
-    Assign(...Permission[T]) error
-    Permit(...Permission[T]) bool
-    Revoke(...Permission[T]) error
-    Permissions() []Permission[T]
-    PermissionsMap() map[T]Permission[T]
-    Get(id T) (Permission[T], bool)
-    FilterPermissions() map[T]Permission[T]
+    Assign(ctx context.Context, perms ...Permission[T]) error
+    Permit(ctx context.Context, perms ...Permission[T]) bool
+    Revoke(ctx context.Context, perms ...Permission[T]) error
+    Permissions(ctx context.Context) []Permission[T]
+    PermissionsMap(ctx context.Context) map[T]Permission[T]
+    Get(ctx context.Context, id T) (Permission[T], bool)
+    FilterPermissions(ctx context.Context) map[T]Permission[T]
 }
 
 type StdRole[T comparable] struct {
@@ -95,15 +95,15 @@ type StdRole[T comparable] struct {
 #### Key Methods
 
 - `NewRole[T comparable](id T) *StdRole[T]` - Creates a new standard role
-- `Assign(perms ...Permission[T]) error` - Assigns permissions to the role
-- `Permit(perms ...Permission[T]) bool` - Checks if the role has all specified permissions
-- `Revoke(perms ...Permission[T]) error` - Revokes permissions from the role
-- `Permissions() []Permission[T]` - Returns all permissions assigned to the role
-- `Get(id T) (Permission[T], bool)` - Looks up a permission by ID
-- `PermissionsMap() map[T]Permission[T]` - Returns a raw map of permissions keyed by ID
-- `FilterPermissions() map[T]Permission[T]` - Returns a raw map of CEL-carrying permissions keyed by ID
+- `Assign(ctx context.Context, perms ...Permission[T]) error` - Assigns permissions to the role
+- `Permit(ctx context.Context, perms ...Permission[T]) bool` - Checks if the role has all specified permissions
+- `Revoke(ctx context.Context, perms ...Permission[T]) error` - Revokes permissions from the role
+- `Permissions(ctx context.Context) []Permission[T]` - Returns all permissions assigned to the role
+- `Get(ctx context.Context, id T) (Permission[T], bool)` - Looks up a permission by ID
+- `PermissionsMap(ctx context.Context) map[T]Permission[T]` - Returns a raw map of permissions keyed by ID
+- `FilterPermissions(ctx context.Context) map[T]Permission[T]` - Returns a raw map of CEL-carrying permissions keyed by ID
 
-`PermissionsMap()` and `FilterPermissions()` return raw references. Do not mutate them directly; use `Assign`/`Revoke` to keep internal caches consistent.
+`PermissionsMap(ctx)` and `FilterPermissions(ctx)` return raw references. Do not mutate them directly; use `Assign(ctx, ...)`/`Revoke(ctx, ...)` to keep internal caches consistent.
 
 ### 3. Permission Interface and Implementation (`permission.go`)
 
@@ -134,22 +134,24 @@ Utility functions for common operations:
 
 #### Walk Function
 
-- `Walk[T comparable](rbac RBAC[T], h WalkHandler[T]) error` - Iterates through all roles
+- `Walk[T comparable](ctx context.Context, rbac RBAC[T], h WalkHandler[T]) error` - Iterates through all roles
 
 #### Inheritance Validation
 
-- `InherCircle[T comparable](rbac RBAC[T]) error` - Detects circular inheritance
+- `InherCircle[T comparable](ctx context.Context, rbac RBAC[T]) error` - Detects circular inheritance
 
 #### Permission Checking
 
-- `AnyGranted[T comparable](rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if any role has a permission
-- `AllGranted[T comparable](rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if all roles have a permission
+- `AnyGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if any role has a permission
+- `AllGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T, permission Permission[T], assert AssertionFunc[T]) bool` - Checks if all roles have a permission
 
 ## Usage Examples
 
 ### Basic Usage
 
 ```go
+ctx := context.Background()
+
 // Create a new RBAC instance
 rbac := gorbac.New[string]()
 
@@ -162,18 +164,18 @@ pA := gorbac.NewPermission("permission-a")
 pB := gorbac.NewPermission("permission-b")
 
 // Assign permissions to roles
-rA.Assign(pA)
-rB.Assign(pB)
+rA.Assign(ctx, pA)
+rB.Assign(ctx, pB)
 
 // Add roles to RBAC
-rbac.Add(rA)
-rbac.Add(rB)
+rbac.Add(ctx, rA)
+rbac.Add(ctx, rB)
 
 // Set inheritance
-rbac.SetParent("role-a", "role-b")
+rbac.SetParent(ctx, "role-a", "role-b")
 
 // Check permissions
-if rbac.IsGranted("role-a", pA, nil) {
+if rbac.IsGranted(ctx, "role-a", pA, nil) {
     // role-a has permission-a
 }
 ```
@@ -202,12 +204,12 @@ rbacStruct := gorbac.New[RoleID]()
 You can provide custom assertion functions for fine-grained control:
 
 ```go
-assertFunc := func(r gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
+assertFunc := func(ctx context.Context, r gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
 	// Custom logic to determine if permission should be granted
 	return true // or false
 }
 
-if rbac.IsGranted("role-a", pA, assertFunc) {
+if rbac.IsGranted(ctx, "role-a", pA, assertFunc) {
     // Permission granted based on custom logic
 }
 ```
@@ -403,7 +405,7 @@ rbac := gorbac.New[string]()
 ### 2. Permission Checking Pattern
 
 ```go
-if rbac.IsGranted("user-role", requiredPermission, nil) {
+if rbac.IsGranted(ctx, "user-role", requiredPermission, nil) {
     // Allow access
 } else {
     // Deny access
@@ -414,11 +416,11 @@ if rbac.IsGranted("user-role", requiredPermission, nil) {
 
 ```go
 roles := []string{"role1", "role2", "role3"}
-if gorbac.AnyGranted(rbac, roles, permission, nil) {
+if gorbac.AnyGranted(ctx, rbac, roles, permission, nil) {
     // At least one role has the permission
 }
 
-if gorbac.AllGranted(rbac, roles, permission, nil) {
+if gorbac.AllGranted(ctx, rbac, roles, permission, nil) {
     // All roles have the permission
 }
 ```

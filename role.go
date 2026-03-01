@@ -1,17 +1,20 @@
 package gorbac
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 // Role describes the role contract.
 type Role[T comparable] interface {
 	ID() T
-	Assign(...Permission[T]) error
-	Permit(...Permission[T]) bool
-	Revoke(...Permission[T]) error
-	Permissions() []Permission[T]
-	PermissionsMap() map[T]Permission[T]
-	Get(id T) (Permission[T], bool)
-	FilterPermissions() map[T]Permission[T]
+	Assign(context.Context, ...Permission[T]) error
+	Permit(context.Context, ...Permission[T]) bool
+	Revoke(context.Context, ...Permission[T]) error
+	Permissions(context.Context) []Permission[T]
+	PermissionsMap(context.Context) map[T]Permission[T]
+	Get(context.Context, T) (Permission[T], bool)
+	FilterPermissions(context.Context) map[T]Permission[T]
 }
 
 // Roles is a map
@@ -56,7 +59,7 @@ func (role *StdRole[T]) ID() T {
 }
 
 // Assign permissions to the role.
-func (role *StdRole[T]) Assign(perms ...Permission[T]) error {
+func (role *StdRole[T]) Assign(_ context.Context, perms ...Permission[T]) error {
 	if len(perms) == 0 {
 		return nil
 	}
@@ -77,7 +80,7 @@ func (role *StdRole[T]) Assign(perms ...Permission[T]) error {
 }
 
 // Permit returns true if the role has all specified permissions.
-func (role *StdRole[T]) Permit(perms ...Permission[T]) bool {
+func (role *StdRole[T]) Permit(_ context.Context, perms ...Permission[T]) bool {
 	if len(perms) == 0 {
 		return false
 	}
@@ -114,7 +117,7 @@ func (role *StdRole[T]) Permit(perms ...Permission[T]) bool {
 }
 
 // Revoke the specific permissions.
-func (role *StdRole[T]) Revoke(perms ...Permission[T]) error {
+func (role *StdRole[T]) Revoke(_ context.Context, perms ...Permission[T]) error {
 	if len(perms) == 0 {
 		return nil
 	}
@@ -129,7 +132,7 @@ func (role *StdRole[T]) Revoke(perms ...Permission[T]) error {
 }
 
 // Permissions returns all permissions into a slice.
-func (role *StdRole[T]) Permissions() []Permission[T] {
+func (role *StdRole[T]) Permissions(_ context.Context) []Permission[T] {
 	role.init()
 	role.mutex.RLock()
 	result := make([]Permission[T], 0, len(role.permissions))
@@ -141,13 +144,13 @@ func (role *StdRole[T]) Permissions() []Permission[T] {
 }
 
 // PermissionsMap returns a raw ref of permissions keyed by ID.
-func (role *StdRole[T]) PermissionsMap() map[T]Permission[T] {
+func (role *StdRole[T]) PermissionsMap(_ context.Context) map[T]Permission[T] {
 	role.init()
 	return role.permissions
 }
 
 // Get returns a permission by ID.
-func (role *StdRole[T]) Get(id T) (Permission[T], bool) {
+func (role *StdRole[T]) Get(_ context.Context, id T) (Permission[T], bool) {
 	role.init()
 	role.mutex.RLock()
 	p, ok := role.permissions[id]
@@ -156,7 +159,7 @@ func (role *StdRole[T]) Get(id T) (Permission[T], bool) {
 }
 
 // FilterPermissions returns a raw ref of CEL-carrying permissions keyed by ID.
-func (role *StdRole[T]) FilterPermissions() map[T]Permission[T] {
+func (role *StdRole[T]) FilterPermissions(_ context.Context) map[T]Permission[T] {
 	role.init()
 	return role.filterPermissions
 }

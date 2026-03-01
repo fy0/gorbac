@@ -1,17 +1,20 @@
 package gorbac
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // WalkHandler is a function defined by user to handle role
 type WalkHandler[T comparable] func(Role[T], []T) error
 
 // Walk passes each Role to WalkHandler
-func Walk[T comparable](rbac RBAC[T], h WalkHandler[T]) (err error) {
+func Walk[T comparable](ctx context.Context, rbac RBAC[T], h WalkHandler[T]) (err error) {
 	if h == nil {
 		return
 	}
-	for _, id := range rbac.RoleIDs() {
-		r, parents, err := rbac.Get(id)
+	for _, id := range rbac.RoleIDs(ctx) {
+		r, parents, err := rbac.Get(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -23,12 +26,12 @@ func Walk[T comparable](rbac RBAC[T], h WalkHandler[T]) (err error) {
 }
 
 // InherCircle returns an error when detecting any circle inheritance.
-func InherCircle[T comparable](rbac RBAC[T]) (err error) {
+func InherCircle[T comparable](ctx context.Context, rbac RBAC[T]) (err error) {
 	skipped := make(map[T]struct{})
 	var stack []T
 
-	for _, id := range rbac.RoleIDs() {
-		if err = dfs(rbac, id, skipped, stack); err != nil {
+	for _, id := range rbac.RoleIDs(ctx) {
+		if err = dfs(ctx, rbac, id, skipped, stack); err != nil {
 			break
 		}
 	}
@@ -40,7 +43,7 @@ var (
 )
 
 // https://en.wikipedia.org/wiki/Depth-first_search
-func dfs[T comparable](rbac RBAC[T], id T, skipped map[T]struct{},
+func dfs[T comparable](ctx context.Context, rbac RBAC[T], id T, skipped map[T]struct{},
 	stack []T) error {
 	if _, ok := skipped[id]; ok {
 		return nil
@@ -50,7 +53,7 @@ func dfs[T comparable](rbac RBAC[T], id T, skipped map[T]struct{},
 			return ErrFoundCircle
 		}
 	}
-	parents, err := rbac.GetParents(id)
+	parents, err := rbac.GetParents(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -60,7 +63,7 @@ func dfs[T comparable](rbac RBAC[T], id T, skipped map[T]struct{},
 	}
 	stack = append(stack, id)
 	for _, pid := range parents {
-		if err := dfs(rbac, pid, skipped, stack); err != nil {
+		if err := dfs(ctx, rbac, pid, skipped, stack); err != nil {
 			return err
 		}
 	}
@@ -68,10 +71,10 @@ func dfs[T comparable](rbac RBAC[T], id T, skipped map[T]struct{},
 }
 
 // AnyGranted checks if any role has the permission.
-func AnyGranted[T comparable](rbac RBAC[T], roles []T,
+func AnyGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T,
 	permission Permission[T], assert AssertionFunc[T]) (ok bool) {
 	for _, role := range roles {
-		if rbac.IsGranted(role, permission, assert) {
+		if rbac.IsGranted(ctx, role, permission, assert) {
 			ok = true
 			break
 		}
@@ -80,11 +83,11 @@ func AnyGranted[T comparable](rbac RBAC[T], roles []T,
 }
 
 // AllGranted checks if all roles have the permission.
-func AllGranted[T comparable](rbac RBAC[T], roles []T,
+func AllGranted[T comparable](ctx context.Context, rbac RBAC[T], roles []T,
 	permission Permission[T], assert AssertionFunc[T]) (ok bool) {
 	ok = true
 	for _, role := range roles {
-		if !rbac.IsGranted(role, permission, assert) {
+		if !rbac.IsGranted(ctx, role, permission, assert) {
 			ok = false
 			break
 		}

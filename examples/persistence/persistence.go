@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"os"
@@ -31,6 +32,7 @@ func SaveJson(filename string, v interface{}) error {
 }
 
 func main() {
+	ctx := context.Background()
 	// map[RoleId]PermissionIds
 	var jsonRoles map[string][]string
 	// map[RoleId]ParentIds
@@ -54,40 +56,40 @@ func main() {
 			if !ok {
 				permissions[pid] = gorbac.NewPermission(pid)
 			}
-			role.Assign(permissions[pid])
+			role.Assign(ctx, permissions[pid])
 		}
-		rbac.Add(role)
+		rbac.Add(ctx, role)
 	}
 	// Assign the inheritance relationship
 	for rid, parents := range jsonInher {
-		if err := rbac.SetParents(rid, parents); err != nil {
+		if err := rbac.SetParents(ctx, rid, parents); err != nil {
 			log.Fatal(err)
 		}
 	}
 	// Check if `editor` can add text
-	if rbac.IsGranted("editor", permissions["add-text"], nil) {
+	if rbac.IsGranted(ctx, "editor", permissions["add-text"], nil) {
 		log.Println("Editor can add text")
 	}
 	// Check if `chief-editor` can add text
-	if rbac.IsGranted("chief-editor", permissions["add-text"], nil) {
+	if rbac.IsGranted(ctx, "chief-editor", permissions["add-text"], nil) {
 		log.Println("Chief editor can add text")
 	}
 	// Check if `photographer` can add text
-	if !rbac.IsGranted("photographer", permissions["add-text"], nil) {
+	if !rbac.IsGranted(ctx, "photographer", permissions["add-text"], nil) {
 		log.Println("Photographer can't add text")
 	}
 	// Check if `nobody` can add text
 	// `nobody` is not exist in goRBAC at the moment
-	if !rbac.IsGranted("nobody", permissions["read-text"], nil) {
+	if !rbac.IsGranted(ctx, "nobody", permissions["read-text"], nil) {
 		log.Println("Nobody can't read text")
 	}
 	// Add `nobody` and assign `read-text` permission
 	nobody := gorbac.NewRole("nobody")
 	permissions["read-text"] = gorbac.NewPermission("read-text")
-	nobody.Assign(permissions["read-text"])
-	rbac.Add(nobody)
+	nobody.Assign(ctx, permissions["read-text"])
+	rbac.Add(ctx, nobody)
 	// Check if `nobody` can read text again
-	if rbac.IsGranted("nobody", permissions["read-text"], nil) {
+	if rbac.IsGranted(ctx, "nobody", permissions["read-text"], nil) {
 		log.Println("Nobody can read text")
 	}
 
@@ -100,14 +102,14 @@ func main() {
 		// WARNING: Don't use gorbac.RBAC instance in the handler,
 		// otherwise it causes deadlock.
 		permissions := make([]string, 0)
-		for _, p := range r.Permissions() {
+		for _, p := range r.Permissions(ctx) {
 			permissions = append(permissions, p.ID())
 		}
 		jsonOutputRoles[r.ID()] = permissions
 		jsonOutputInher[r.ID()] = parents
 		return nil
 	}
-	if err := gorbac.Walk(rbac, SaveJsonHandler); err != nil {
+	if err := gorbac.Walk(ctx, rbac, SaveJsonHandler); err != nil {
 		log.Fatalln(err)
 	}
 

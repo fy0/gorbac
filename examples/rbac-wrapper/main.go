@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -70,60 +71,61 @@ func NewMyRBAC[T comparable](repo roleRepo[T]) *MyRBAC[T] {
 	}
 }
 
-func (r *MyRBAC[T]) Add(role gorbac.Role[T]) error {
+func (r *MyRBAC[T]) Add(ctx context.Context, role gorbac.Role[T]) error {
 	if err := r.repo.AddRole(role.ID()); err != nil {
 		return err
 	}
-	return r.inner.Add(role)
+	return r.inner.Add(ctx, role)
 }
 
-func (r *MyRBAC[T]) Remove(id T) error {
+func (r *MyRBAC[T]) Remove(ctx context.Context, id T) error {
 	if err := r.repo.RemoveRole(id); err != nil {
 		return err
 	}
-	return r.inner.Remove(id)
+	return r.inner.Remove(ctx, id)
 }
 
-func (r *MyRBAC[T]) SetParent(id T, parent T) error {
+func (r *MyRBAC[T]) SetParent(ctx context.Context, id T, parent T) error {
 	if err := r.repo.AddParent(id, parent); err != nil {
 		return err
 	}
-	return r.inner.SetParent(id, parent)
+	return r.inner.SetParent(ctx, id, parent)
 }
 
-func (r *MyRBAC[T]) SetParents(id T, parents []T) error {
+func (r *MyRBAC[T]) SetParents(ctx context.Context, id T, parents []T) error {
 	for _, parent := range parents {
 		if err := r.repo.AddParent(id, parent); err != nil {
 			return err
 		}
 	}
-	return r.inner.SetParents(id, parents)
+	return r.inner.SetParents(ctx, id, parents)
 }
 
-func (r *MyRBAC[T]) GetParents(id T) ([]T, error) {
-	return r.inner.GetParents(id)
+func (r *MyRBAC[T]) GetParents(ctx context.Context, id T) ([]T, error) {
+	return r.inner.GetParents(ctx, id)
 }
 
-func (r *MyRBAC[T]) RemoveParent(id T, parent T) error {
+func (r *MyRBAC[T]) RemoveParent(ctx context.Context, id T, parent T) error {
 	if err := r.repo.RemoveParent(id, parent); err != nil {
 		return err
 	}
-	return r.inner.RemoveParent(id, parent)
+	return r.inner.RemoveParent(ctx, id, parent)
 }
 
-func (r *MyRBAC[T]) Get(id T) (gorbac.Role[T], []T, error) {
-	return r.inner.Get(id)
+func (r *MyRBAC[T]) Get(ctx context.Context, id T) (gorbac.Role[T], []T, error) {
+	return r.inner.Get(ctx, id)
 }
 
-func (r *MyRBAC[T]) RoleIDs() []T {
-	return r.inner.RoleIDs()
+func (r *MyRBAC[T]) RoleIDs(ctx context.Context) []T {
+	return r.inner.RoleIDs(ctx)
 }
 
-func (r *MyRBAC[T]) IsGranted(id T, p gorbac.Permission[T], assert gorbac.AssertionFunc[T]) bool {
-	return r.inner.IsGranted(id, p, assert)
+func (r *MyRBAC[T]) IsGranted(ctx context.Context, id T, p gorbac.Permission[T], assert gorbac.AssertionFunc[T]) bool {
+	return r.inner.IsGranted(ctx, id, p, assert)
 }
 
 func main() {
+	ctx := context.Background()
 	repo := newMemoryRepo[string]()
 	rbac := NewMyRBAC[string](repo)
 
@@ -131,24 +133,24 @@ func main() {
 	user := gorbac.NewRole("user")
 	read := gorbac.NewPermission("read")
 
-	if err := admin.Assign(read); err != nil {
+	if err := admin.Assign(ctx, read); err != nil {
 		log.Fatal(err)
 	}
-	if err := user.Assign(read); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := rbac.Add(admin); err != nil {
-		log.Fatal(err)
-	}
-	if err := rbac.Add(user); err != nil {
-		log.Fatal(err)
-	}
-	if err := rbac.SetParent("admin", "user"); err != nil {
+	if err := user.Assign(ctx, read); err != nil {
 		log.Fatal(err)
 	}
 
-	if rbac.IsGranted("admin", read, nil) {
+	if err := rbac.Add(ctx, admin); err != nil {
+		log.Fatal(err)
+	}
+	if err := rbac.Add(ctx, user); err != nil {
+		log.Fatal(err)
+	}
+	if err := rbac.SetParent(ctx, "admin", "user"); err != nil {
+		log.Fatal(err)
+	}
+
+	if rbac.IsGranted(ctx, "admin", read, nil) {
 		fmt.Println("admin can read")
 	}
 

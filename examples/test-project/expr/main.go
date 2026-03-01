@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"maps"
@@ -17,6 +18,7 @@ import (
 //  2. Use gorbac helpers to compile into a single SQL WHERE fragment
 //  3. Optionally AND with a user query expression
 func main() {
+	ctx := context.Background()
 	type projectRow struct {
 		ProjectID  int64  `json:"project_id" db:"id"`
 		CreatorID  int64  `json:"creator_id"`
@@ -78,15 +80,15 @@ func main() {
 	rbac := gorbac.New[string]()
 
 	roleCreator := gorbac.NewRole("role-creator")
-	_ = roleCreator.Assign(gorbac.NewFilterPermission("project.read", `creator_id == current_user_id`))
+	_ = roleCreator.Assign(ctx, gorbac.NewFilterPermission("project.read", `creator_id == current_user_id`))
 	// _ = roleCreator.Assign(gorbac.NewFilterPermission("project.read", `creator_id in [current_user_id, 1000]`))
-	_ = rbac.Add(roleCreator)
+	_ = rbac.Add(ctx, roleCreator)
 
 	rolePublic := gorbac.NewRole("role-public")
-	_ = rolePublic.Assign(gorbac.NewFilterPermission("project.read", `visibility == "PUBLIC"`))
-	_ = rolePublic.Assign(gorbac.NewFilterPermission("project.read", `visibility in ["ARCHIVED", "PUBLIC"]`))
-	_ = rolePublic.Assign(gorbac.NewPermission("project.query"))
-	_ = rbac.Add(rolePublic)
+	_ = rolePublic.Assign(ctx, gorbac.NewFilterPermission("project.read", `visibility == "PUBLIC"`))
+	_ = rolePublic.Assign(ctx, gorbac.NewFilterPermission("project.read", `visibility in ["ARCHIVED", "PUBLIC"]`))
+	_ = rolePublic.Assign(ctx, gorbac.NewPermission("project.query"))
+	_ = rbac.Add(ctx, rolePublic)
 
 	userRoles := []string{"role-creator", "role-public"}
 	bindings := filter.Bindings{
@@ -99,7 +101,7 @@ func main() {
 	// 1) data scope from permissions (OR across roles) + optional user query (AND).
 	queryExpr := `query == "" || name.startsWith(query)`
 
-	roleExprs, err := gorbac.FilterExprsForRoles(rbac, userRoles, required)
+	roleExprs, err := gorbac.FilterExprsForRoles(ctx, rbac, userRoles, required)
 	if err != nil {
 		log.Fatal(err)
 		return

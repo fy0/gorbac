@@ -1,6 +1,7 @@
 package gorbac
 
 import (
+	"context"
 	"testing"
 )
 
@@ -24,36 +25,39 @@ func assert(t *testing.T, err error) {
 }
 
 func TestRbacPrepare(t *testing.T) {
+	ctx := context.Background()
 	rbac = New[string]()
-	assert(t, rA.Assign(pA))
-	assert(t, rB.Assign(pB))
-	assert(t, rC.Assign(pC))
+	assert(t, rA.Assign(ctx, pA))
+	assert(t, rB.Assign(ctx, pB))
+	assert(t, rC.Assign(ctx, pC))
 }
 
 func TestRbacAdd(t *testing.T) {
-	assert(t, rbac.Add(rA))
-	if err := rbac.Add(rA); err != ErrRoleExist {
+	ctx := context.Background()
+	assert(t, rbac.Add(ctx, rA))
+	if err := rbac.Add(ctx, rA); err != ErrRoleExist {
 		t.Error("A role can not be readded")
 	}
-	assert(t, rbac.Add(rB))
-	assert(t, rbac.Add(rC))
+	assert(t, rbac.Add(ctx, rB))
+	assert(t, rbac.Add(ctx, rC))
 }
 
 func TestRbacGetRemove(t *testing.T) {
-	assert(t, rbac.SetParent("role-c", "role-a"))
-	assert(t, rbac.SetParent("role-a", "role-b"))
-	if r, parents, err := rbac.Get("role-a"); err != nil {
+	ctx := context.Background()
+	assert(t, rbac.SetParent(ctx, "role-c", "role-a"))
+	assert(t, rbac.SetParent(ctx, "role-a", "role-b"))
+	if r, parents, err := rbac.Get(ctx, "role-a"); err != nil {
 		t.Fatal(err)
 	} else if r.ID() != "role-a" {
 		t.Fatalf("[role-a] does not match %s", r.ID())
 	} else if len(parents) != 1 {
 		t.Fatal("[role-a] should have one parent")
 	}
-	assert(t, rbac.Remove("role-a"))
-	if err := rbac.Remove("not-exist"); err != ErrRoleNotExist {
+	assert(t, rbac.Remove(ctx, "role-a"))
+	if err := rbac.Remove(ctx, "not-exist"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
-	if r, parents, err := rbac.Get("role-a"); err != ErrRoleNotExist {
+	if r, parents, err := rbac.Get(ctx, "role-a"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	} else if r != nil {
 		t.Fatal("The role should be nil when not found")
@@ -63,53 +67,54 @@ func TestRbacGetRemove(t *testing.T) {
 }
 
 func TestRbacParents(t *testing.T) {
-	assert(t, rbac.SetParent("role-c", "role-b"))
-	if parents, err := rbac.GetParents("role-c"); err != nil {
+	ctx := context.Background()
+	assert(t, rbac.SetParent(ctx, "role-c", "role-b"))
+	if parents, err := rbac.GetParents(ctx, "role-c"); err != nil {
 		t.Fatal(err)
 	} else if !containsParent(parents, "role-b") {
 		t.Fatal("Parent binding failed")
 	}
-	assert(t, rbac.RemoveParent("role-c", "role-b"))
-	if parents, err := rbac.GetParents("role-c"); err != nil {
+	assert(t, rbac.RemoveParent(ctx, "role-c", "role-b"))
+	if parents, err := rbac.GetParents(ctx, "role-c"); err != nil {
 		t.Fatal(err)
 	} else if containsParent(parents, "role-b") {
 		t.Fatal("Parent unbinding failed")
 	}
-	if err := rbac.RemoveParent("role-a", "role-b"); err != ErrRoleNotExist {
+	if err := rbac.RemoveParent(ctx, "role-a", "role-b"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
-	if err := rbac.RemoveParent("role-b", "role-a"); err != ErrRoleNotExist {
+	if err := rbac.RemoveParent(ctx, "role-b", "role-a"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
-	if err := rbac.SetParent("role-a", "role-b"); err != ErrRoleNotExist {
+	if err := rbac.SetParent(ctx, "role-a", "role-b"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
-	if err := rbac.SetParent("role-c", "role-a"); err != ErrRoleNotExist {
+	if err := rbac.SetParent(ctx, "role-c", "role-a"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
-	if err := rbac.SetParents("role-a", []string{"role-b"}); err != ErrRoleNotExist {
+	if err := rbac.SetParents(ctx, "role-a", []string{"role-b"}); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
-	if err := rbac.SetParents("role-c", []string{"role-a"}); err != ErrRoleNotExist {
+	if err := rbac.SetParents(ctx, "role-c", []string{"role-a"}); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	}
-	assert(t, rbac.SetParents("role-c", []string{"role-b"}))
-	if parents, err := rbac.GetParents("role-c"); err != nil {
+	assert(t, rbac.SetParents(ctx, "role-c", []string{"role-b"}))
+	if parents, err := rbac.GetParents(ctx, "role-c"); err != nil {
 		t.Fatal(err)
 	} else if !containsParent(parents, "role-b") {
 		t.Fatal("Parent binding failed")
 	}
-	if parents, err := rbac.GetParents("role-a"); err != ErrRoleNotExist {
+	if parents, err := rbac.GetParents(ctx, "role-a"); err != ErrRoleNotExist {
 		t.Fatalf("%s needed", ErrRoleNotExist)
 	} else if len(parents) != 0 {
 		t.Fatal("[role-a] should not have any parent")
 	}
-	if parents, err := rbac.GetParents("role-b"); err != nil {
+	if parents, err := rbac.GetParents(ctx, "role-b"); err != nil {
 		t.Fatal(err)
 	} else if len(parents) != 0 {
 		t.Fatal("[role-b] should not have any parent")
 	}
-	if parents, err := rbac.GetParents("role-c"); err != nil {
+	if parents, err := rbac.GetParents(ctx, "role-c"); err != nil {
 		t.Fatal(err)
 	} else if len(parents) != 1 {
 		t.Fatal("[role-c] should have one parent")
@@ -117,22 +122,23 @@ func TestRbacParents(t *testing.T) {
 }
 
 func TestRbacPermission(t *testing.T) {
-	if !rbac.IsGranted("role-c", pC, nil) {
+	ctx := context.Background()
+	if !rbac.IsGranted(ctx, "role-c", pC, nil) {
 		t.Fatalf("role-c should have %s", pC)
 	}
-	if rbac.IsGranted("role-c", pC, func(RBAC[string], string, Permission[string]) bool { return false }) {
+	if rbac.IsGranted(ctx, "role-c", pC, func(context.Context, RBAC[string], string, Permission[string]) bool { return false }) {
 		t.Fatal("Assertion don't work")
 	}
-	if !rbac.IsGranted("role-c", pB, nil) {
+	if !rbac.IsGranted(ctx, "role-c", pB, nil) {
 		t.Fatalf("role-c should have %s which inherits from role-b", pB)
 	}
 
-	assert(t, rbac.RemoveParent("role-c", "role-b"))
-	if rbac.IsGranted("role-c", pB, nil) {
+	assert(t, rbac.RemoveParent(ctx, "role-c", "role-b"))
+	if rbac.IsGranted(ctx, "role-c", pB, nil) {
 		t.Fatalf("role-c should not have %s because of the unbinding with role-b", pB)
 	}
 
-	if rbac.IsGranted("role-a", permissionZero, nil) {
+	if rbac.IsGranted(ctx, "role-a", permissionZero, nil) {
 		t.Fatal("role-a should not have nil permission")
 	}
 }
@@ -147,51 +153,53 @@ func containsParent(parents []string, target string) bool {
 }
 
 func BenchmarkRbacGranted(b *testing.B) {
+	ctx := context.Background()
 	rbac = New[string]()
-	if err := rA.Assign(pA); err != nil {
+	if err := rA.Assign(ctx, pA); err != nil {
 		b.Fatal(err)
 	}
-	if err := rB.Assign(pB); err != nil {
+	if err := rB.Assign(ctx, pB); err != nil {
 		b.Fatal(err)
 	}
-	if err := rC.Assign(pC); err != nil {
+	if err := rC.Assign(ctx, pC); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.Add(rA); err != nil {
+	if err := rbac.Add(ctx, rA); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.Add(rB); err != nil {
+	if err := rbac.Add(ctx, rB); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.Add(rC); err != nil {
+	if err := rbac.Add(ctx, rC); err != nil {
 		b.Fatal(err)
 	}
 	for i := 0; i < b.N; i++ {
-		rbac.IsGranted("role-a", pA, nil)
+		rbac.IsGranted(ctx, "role-a", pA, nil)
 	}
 }
 
 func BenchmarkRbacNotGranted(b *testing.B) {
+	ctx := context.Background()
 	rbac = New[string]()
-	if err := rA.Assign(pA); err != nil {
+	if err := rA.Assign(ctx, pA); err != nil {
 		b.Fatal(err)
 	}
-	if err := rB.Assign(pB); err != nil {
+	if err := rB.Assign(ctx, pB); err != nil {
 		b.Fatal(err)
 	}
-	if err := rC.Assign(pC); err != nil {
+	if err := rC.Assign(ctx, pC); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.Add(rA); err != nil {
+	if err := rbac.Add(ctx, rA); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.Add(rB); err != nil {
+	if err := rbac.Add(ctx, rB); err != nil {
 		b.Fatal(err)
 	}
-	if err := rbac.Add(rC); err != nil {
+	if err := rbac.Add(ctx, rC); err != nil {
 		b.Fatal(err)
 	}
 	for i := 0; i < b.N; i++ {
-		rbac.IsGranted("role-a", pB, nil)
+		rbac.IsGranted(ctx, "role-a", pB, nil)
 	}
 }

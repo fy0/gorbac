@@ -1,6 +1,7 @@
 package gorbac
 
 import (
+	"context"
 	"testing"
 
 	"github.com/fy0/gorbac/v3/filter"
@@ -54,7 +55,7 @@ func buildTestProgram(
 	schema filter.Schema,
 	opts ...filter.EngineOption,
 ) (*filter.Program, error) {
-	exprs, err := FilterExprsForRoles(rbac, roles, requiredFilterPermissions)
+	exprs, err := FilterExprsForRoles(context.Background(), rbac, roles, requiredFilterPermissions)
 	if err != nil {
 		return nil, err
 	}
@@ -62,15 +63,16 @@ func buildTestProgram(
 }
 
 func TestNewFilterProgram_WithMacro(t *testing.T) {
+	ctx := context.Background()
 	rbac := New[string]()
 
 	role1 := NewRole("r1")
-	_ = role1.Assign(NewFilterPermission("read", `selfUser()`))
-	_ = rbac.Add(role1)
+	_ = role1.Assign(ctx, NewFilterPermission("read", `selfUser()`))
+	_ = rbac.Add(ctx, role1)
 
 	role2 := NewRole("r2")
-	_ = role2.Assign(NewFilterPermission("read", `visibility == "PUBLIC"`))
-	_ = rbac.Add(role2)
+	_ = role2.Assign(ctx, NewFilterPermission("read", `visibility == "PUBLIC"`))
+	_ = rbac.Add(ctx, role2)
 
 	selfUser := cel.GlobalMacro("selfUser", 0, func(eh cel.MacroExprFactory, _ ast.Expr, _ []ast.Expr) (ast.Expr, *common.Error) {
 		return eh.NewCall(operators.Equals, eh.NewIdent("creator_id"), eh.NewIdent("current_user_id")), nil
@@ -102,11 +104,12 @@ func TestNewFilterProgram_WithMacro(t *testing.T) {
 }
 
 func TestNewFilterProgram_WithExtraFilterCEL_StdPermission(t *testing.T) {
+	ctx := context.Background()
 	rbac := New[string]()
 
 	role := NewRole("r1")
-	_ = role.Assign(NewPermission("read"))
-	_ = rbac.Add(role)
+	_ = role.Assign(ctx, NewPermission("read"))
+	_ = rbac.Add(ctx, role)
 
 	program, err := buildTestProgram(
 		rbac,
@@ -150,17 +153,19 @@ func TestNewFilterProgram_WithExtraFilterCEL_StdPermission(t *testing.T) {
 }
 
 func TestFilterExprsForRoles(t *testing.T) {
+	ctx := context.Background()
 	rbac := New[string]()
 
 	role1 := NewRole("r1")
-	_ = role1.Assign(NewFilterPermission("read", `creator_id == current_user_id`))
-	_ = rbac.Add(role1)
+	_ = role1.Assign(ctx, NewFilterPermission("read", `creator_id == current_user_id`))
+	_ = rbac.Add(ctx, role1)
 
 	role2 := NewRole("r2")
-	_ = role2.Assign(NewPermission("read"))
-	_ = rbac.Add(role2)
+	_ = role2.Assign(ctx, NewPermission("read"))
+	_ = rbac.Add(ctx, role2)
 
 	exprs, err := FilterExprsForRoles(
+		ctx,
 		rbac,
 		[]string{"r1", "r2"},
 		[]Permission[string]{NewPermission("read")},

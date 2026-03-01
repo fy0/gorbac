@@ -32,6 +32,7 @@ This fork includes a few behavior/API adjustments:
 
 - `Role` is now an interface and the default implementation is `StdRole` (constructed via `NewRole`).
 - `RBAC` is now an interface and the default implementation is `StdRBAC` (constructed via `New`).
+- RBAC/Role APIs use `context.Context` as the first parameter, aligned with modern Go practices.
 - `Role.Assign`, `Role.Permit`, and `Role.Revoke` now accept variadic permissions for batch usage.
 - The data-scope filter helpers focus on composing CEL filters across roles; permission checks are expected to happen elsewhere.
 
@@ -59,12 +60,17 @@ Preparing
 Import the library:
 
 ```go
-import "github.com/fy0/gorbac/v3"
+import (
+	"context"
+
+	"github.com/fy0/gorbac/v3"
+)
 ```
 
 Get a new instance of RBAC (using string as the ID type):
 
 ```go
+ctx := context.Background()
 rbac := gorbac.New[string]()
 ```
 
@@ -91,11 +97,11 @@ pE := gorbac.NewPermission("permission-e")
 Add the permissions to roles:
 
 ```go
-rA.Assign(pA)
-rB.Assign(pB)
-rC.Assign(pC)
-rD.Assign(pD)
-rE.Assign(pE)
+rA.Assign(ctx, pA)
+rB.Assign(ctx, pB)
+rC.Assign(ctx, pC)
+rD.Assign(ctx, pD)
+rE.Assign(ctx, pE)
 ```
 
 Also, you can implement `gorbac.Permission` for your own data structure.
@@ -103,19 +109,19 @@ Also, you can implement `gorbac.Permission` for your own data structure.
 After initialization, add the roles to the RBAC instance:
 
 ```go
-rbac.Add(rA)
-rbac.Add(rB)
-rbac.Add(rC)
-rbac.Add(rD)
-rbac.Add(rE)
+rbac.Add(ctx, rA)
+rbac.Add(ctx, rB)
+rbac.Add(ctx, rC)
+rbac.Add(ctx, rD)
+rbac.Add(ctx, rE)
 ```
 
 And set the inheritance:
 
 ```go
-rbac.SetParent("role-a", "role-b")
-rbac.SetParents("role-b", []string{"role-c", "role-d"})
-rbac.SetParent("role-e", "role-d")
+rbac.SetParent(ctx, "role-a", "role-b")
+rbac.SetParents(ctx, "role-b", []string{"role-c", "role-d"})
+rbac.SetParent(ctx, "role-e", "role-d")
 ```
 
 Checking
@@ -124,10 +130,10 @@ Checking
 Checking the permission is easy:
 
 ```go
-if rbac.IsGranted("role-a", pA, nil) &&
-	rbac.IsGranted("role-a", pB, nil) &&
-	rbac.IsGranted("role-a", pC, nil) &&
-	rbac.IsGranted("role-a", pD, nil) {
+if rbac.IsGranted(ctx, "role-a", pA, nil) &&
+	rbac.IsGranted(ctx, "role-a", pB, nil) &&
+	rbac.IsGranted(ctx, "role-a", pC, nil) &&
+	rbac.IsGranted(ctx, "role-a", pD, nil) {
 	fmt.Println("The role-a has been granted permis-a, b, c and d.")
 }
 ```
@@ -138,12 +144,12 @@ Advanced Checking with Assertion Functions
 You can also use assertion functions for more fine-grained permission controls:
 
 ```go
-assertion := func(rbac gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
+assertion := func(ctx context.Context, rbac gorbac.RBAC[string], id string, p gorbac.Permission[string]) bool {
 	// Custom logic to determine if permission should be granted
 	return true // or false based on your logic
 }
 
-if rbac.IsGranted("role-a", pA, assertion) {
+if rbac.IsGranted(ctx, "role-a", pA, assertion) {
 	fmt.Println("The role-a has been granted permission-a based on the assertion.")
 }
 ```
@@ -182,8 +188,8 @@ goRBAC provides several built-in utility functions:
 Detects circular inheritance in the role hierarchy:
 
 ```go
-rbac.SetParent("role-c", "role-a")
-if err := gorbac.InherCircle(rbac); err != nil {
+rbac.SetParent(ctx, "role-c", "role-a")
+if err := gorbac.InherCircle(ctx, rbac); err != nil {
 	fmt.Println("A circle inheritance occurred.")
 }
 ```
@@ -193,7 +199,7 @@ Checks if any of the specified roles have a permission:
 
 ```go
 roles := []string{"role-a", "role-b", "role-c"}
-if gorbac.AnyGranted(rbac, roles, pA, nil) {
+if gorbac.AnyGranted(ctx, rbac, roles, pA, nil) {
 	fmt.Println("At least one role has permission-a.")
 }
 ```
@@ -203,7 +209,7 @@ Checks if all of the specified roles have a permission:
 
 ```go
 roles := []string{"role-a", "role-b", "role-c"}
-if gorbac.AllGranted(rbac, roles, pA, nil) {
+if gorbac.AllGranted(ctx, rbac, roles, pA, nil) {
 	fmt.Println("All roles have permission-a.")
 }
 ```
@@ -216,7 +222,7 @@ handler := func(r gorbac.Role[string], parents []string) error {
 	fmt.Printf("Role: %s, Parents: %v\n", r.ID(), parents)
 	return nil
 }
-gorbac.Walk(rbac, handler)
+gorbac.Walk(ctx, rbac, handler)
 ```
 
 Custom Types
