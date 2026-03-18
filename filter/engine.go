@@ -125,8 +125,19 @@ type Program struct {
 }
 
 // ConditionTree exposes the underlying condition tree.
+//
+// Together with Schema and the Walk* helpers, this is the supported extension
+// surface for downstream renderers, analyzers, and static checks.
 func (p *Program) ConditionTree() Condition {
 	return p.condition
+}
+
+// Schema returns the schema bound when the program was compiled.
+//
+// Together with ConditionTree and the Walk* helpers, this is the supported
+// extension surface for downstream renderers, analyzers, and static checks.
+func (p *Program) Schema() Schema {
+	return p.schema
 }
 
 // IsCondGranted evaluates the compiled condition tree against an object var map.
@@ -232,6 +243,10 @@ type Statement struct {
 }
 
 // RenderSQL converts the program into a dialect-specific SQL fragment.
+//
+// SQL rendering is one built-in renderer for the compiled IR. Non-SQL backends
+// should build on Schema, ConditionTree, and the Walk* helpers instead of SQL
+// renderer internals.
 func (p *Program) RenderSQL(bindings Bindings, opts RenderOptions) (Statement, error) {
 	renderer := newRenderer(p.schema, opts, bindings)
 	return renderer.Render(p.condition)
